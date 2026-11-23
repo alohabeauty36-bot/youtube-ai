@@ -1,0 +1,403 @@
+{
+ "_note": "DỮ LIỆU GIẢ LẬP — DEMO. Mọi doanh nghiệp, số liệu, URL trong file này là hư cấu (example.org) để kiểm thử gate. Không phải tin thật về VinFast/V-Green.",
+ "articles": [
+  {
+   "id": "demo-p3-offer",
+   "title": "[DEMO] Mạng sạc DEMO-Charge công bố ưu đãi sạc có thời hạn cho chủ xe điện",
+   "url": "https://example.org/demo-charge/tin-tuc/uu-dai-sac-den-31-12?utm_source=fb",
+   "publisher": "DEMO-Charge (nguồn chính thức giả lập)",
+   "trust_tier": 1,
+   "published_at": "now-6h",
+   "event_at": "now-6h",
+   "effective_from": "now-1d",
+   "effective_to": "now+38d",
+   "model_names": [
+    "DEMO-A3",
+    "DEMO-A5"
+   ],
+   "entities": [
+    "DEMO-Charge",
+    "Hãng xe DEMO-A"
+   ],
+   "raw_excerpt": "Mạng sạc DEMO-Charge thông báo giảm 30% đơn giá sạc tại các trạm công cộng cho xe của hãng DEMO-A. Ưu đãi áp dụng từ ngày công bố đến hết ngày 31 tháng 12 và chỉ áp dụng cho tài khoản đã liên kết xe. Đơn giá sau giảm là 2.660 đồng mỗi ki-lô-oát giờ. Doanh nghiệp cho biết đang có 120 trạm đang vận hành trong mạng lưới và kế hoạch mở thêm trạm sẽ được công bố riêng. Ưu đãi không áp dụng cho xe chạy dịch vụ đăng ký kinh doanh vận tải.",
+   "supporting_sources": [
+    {
+     "source_id": "s2",
+     "url": "https://example.net/bao-demo/kinh-te/uu-dai-sac-demo-charge",
+     "publisher": "Báo DEMO Kinh Tế",
+     "trust_tier": 2,
+     "published_at": "now-4h",
+     "text": "Theo thông báo của DEMO-Charge, đơn giá sạc giảm 30% đến hết ngày 31 tháng 12, chỉ áp dụng cho tài khoản đã liên kết xe và không áp dụng cho xe chạy dịch vụ đăng ký kinh doanh vận tải."
+    }
+   ],
+   "claims": [
+    {
+     "claim_key": "c1",
+     "text": "DEMO-Charge giảm 30% đơn giá sạc công cộng cho xe DEMO-A",
+     "claim_type": "charging_offer",
+     "subject": "mức giảm đơn giá sạc",
+     "value": "30",
+     "unit": "%",
+     "date_scope": "từ ngày công bố đến 31/12",
+     "source_ids": [
+      "s1",
+      "s2"
+     ],
+     "evidence_excerpt": "giảm 30% đơn giá sạc tại các trạm công cộng",
+     "is_key": true
+    },
+    {
+     "claim_key": "c2",
+     "text": "Ưu đãi kết thúc hết ngày 31 tháng 12 và chỉ áp dụng cho tài khoản đã liên kết xe",
+     "claim_type": "deadline",
+     "subject": "thời hạn ưu đãi",
+     "value": "31/12",
+     "date_scope": "năm hiện tại",
+     "source_ids": [
+      "s1"
+     ],
+     "evidence_excerpt": "đến hết ngày 31 tháng 12 và chỉ áp dụng cho tài khoản đã liên kết xe",
+     "is_key": true
+    },
+    {
+     "claim_key": "c3",
+     "text": "Đơn giá sau giảm là 2.660 đồng mỗi kWh",
+     "claim_type": "price",
+     "subject": "đơn giá sau giảm",
+     "value": "2660",
+     "unit": "đồng/kWh",
+     "source_ids": [
+      "s1"
+     ],
+     "evidence_excerpt": "Đơn giá sau giảm là 2.660 đồng mỗi ki-lô-oát giờ",
+     "is_key": true
+    },
+    {
+     "claim_key": "c4",
+     "text": "Mạng lưới có 120 trạm đang vận hành",
+     "claim_type": "station_count",
+     "subject": "số trạm đang vận hành DEMO-Charge",
+     "value": "120",
+     "unit": "trạm",
+     "source_ids": [
+      "s1"
+     ],
+     "evidence_excerpt": "đang có 120 trạm đang vận hành",
+     "is_key": true
+    },
+    {
+     "claim_key": "c5",
+     "text": "Xe chạy dịch vụ đăng ký kinh doanh vận tải không được áp dụng",
+     "claim_type": "charging_offer",
+     "subject": "đối tượng loại trừ",
+     "value": "xe dịch vụ",
+     "source_ids": [
+      "s1",
+      "s2"
+     ],
+     "evidence_excerpt": "không áp dụng cho xe chạy dịch vụ đăng ký kinh doanh vận tải",
+     "is_key": true
+    },
+    {
+     "claim_key": "c6",
+     "text": "Ưu đãi có thể khiến trạm đông hơn vào giờ cao điểm",
+     "claim_type": "general",
+     "status": "inference",
+     "source_ids": [],
+     "is_key": false
+    }
+   ]
+  },
+  {
+   "id": "demo-p3-offer-dup",
+   "title": "[DEMO] Mạng sạc DEMO-Charge công bố ưu đãi sạc có thời hạn cho chủ xe điện",
+   "url": "https://www.example.org/demo-charge/tin-tuc/uu-dai-sac-den-31-12/?utm_campaign=zalo",
+   "publisher": "DEMO-Charge (nguồn chính thức giả lập)",
+   "trust_tier": 1,
+   "published_at": "now-6h",
+   "raw_excerpt": "Mạng sạc DEMO-Charge thông báo giảm 30% đơn giá sạc tại các trạm công cộng cho xe của hãng DEMO-A.",
+   "claims": []
+  },
+  {
+   "id": "demo-p1-tco",
+   "title": "[DEMO] Cách tính tổng chi phí sở hữu 3 năm khi mua xe điện lần đầu",
+   "url": "https://example.net/bao-demo/xe/tong-chi-phi-so-huu-xe-dien-3-nam",
+   "publisher": "Báo DEMO Kinh Tế",
+   "trust_tier": 2,
+   "published_at": "now-30h",
+   "model_names": [
+    "DEMO-A5"
+   ],
+   "entities": [
+    "Hãng xe DEMO-A"
+   ],
+   "raw_excerpt": "Khi mua xe điện lần đầu, người mua thường chỉ nhìn giá niêm yết. Bài viết hướng dẫn cách cộng thêm chi phí sạc, bảo hiểm, bảo dưỡng và khấu hao trong 3 năm. Theo bảng giá điện sinh hoạt giả lập dùng cho ví dụ, bậc cao nhất là 3.015 đồng mỗi ki-lô-oát giờ. Mẫu DEMO-A5 có mức tiêu thụ công bố 15 ki-lô-oát giờ cho 100 ki-lô-mét theo điều kiện thử nghiệm của hãng. Mức tiêu thụ thực tế thay đổi theo tốc độ, điều hòa và tải trọng. Người ở chung cư cần hỏi ban quản lý về quy định lắp sạc riêng trước khi đặt cọc.",
+   "supporting_sources": [
+    {
+     "source_id": "s2",
+     "url": "https://example.com/demo-evn/bang-gia-dien-gia-lap",
+     "publisher": "Cổng thông tin DEMO Điện lực",
+     "trust_tier": 1,
+     "published_at": "now-40d",
+     "text": "Bảng giá điện sinh hoạt giả lập: bậc cao nhất 3.015 đồng mỗi ki-lô-oát giờ."
+    },
+    {
+     "source_id": "s3",
+     "url": "https://example.org/demo-a/san-pham/demo-a5/thong-so",
+     "publisher": "Hãng xe DEMO-A (nguồn chính thức giả lập)",
+     "trust_tier": 1,
+     "published_at": "now-90d",
+     "text": "DEMO-A5: mức tiêu thụ công bố 15 ki-lô-oát giờ cho 100 ki-lô-mét theo điều kiện thử nghiệm của hãng."
+    }
+   ],
+   "claims": [
+    {
+     "claim_key": "c1",
+     "text": "Bậc giá điện sinh hoạt cao nhất (giả lập) là 3.015 đồng/kWh",
+     "claim_type": "price",
+     "subject": "giá điện bậc cao nhất",
+     "value": "3015",
+     "unit": "đồng/kWh",
+     "source_ids": [
+      "s1",
+      "s2"
+     ],
+     "evidence_excerpt": "bậc cao nhất 3.015 đồng mỗi ki-lô-oát giờ",
+     "is_key": true
+    },
+    {
+     "claim_key": "c2",
+     "text": "DEMO-A5 có mức tiêu thụ công bố 15 kWh/100 km theo điều kiện thử nghiệm của hãng",
+     "claim_type": "spec",
+     "subject": "tiêu thụ công bố DEMO-A5",
+     "value": "15",
+     "unit": "kWh/100km",
+     "source_ids": [
+      "s3"
+     ],
+     "evidence_excerpt": "mức tiêu thụ công bố 15 ki-lô-oát giờ cho 100 ki-lô-mét",
+     "is_key": true
+    },
+    {
+     "claim_key": "c3",
+     "text": "Mức tiêu thụ thực tế thay đổi theo tốc độ, điều hòa và tải trọng",
+     "claim_type": "general",
+     "source_ids": [
+      "s1"
+     ],
+     "evidence_excerpt": "Mức tiêu thụ thực tế thay đổi theo tốc độ, điều hòa và tải trọng",
+     "is_key": true
+    }
+   ]
+  },
+  {
+   "id": "demo-p2-charge100",
+   "title": "[DEMO] Hãng DEMO-A hướng dẫn mức sạc hằng ngày cho pin xe điện",
+   "url": "https://example.org/demo-a/ho-tro/huong-dan-sac-hang-ngay",
+   "publisher": "Hãng xe DEMO-A (nguồn chính thức giả lập)",
+   "trust_tier": 1,
+   "published_at": "now-50h",
+   "model_names": [
+    "DEMO-A3",
+    "DEMO-A5"
+   ],
+   "entities": [
+    "Hãng xe DEMO-A"
+   ],
+   "raw_excerpt": "Hãng DEMO-A khuyến nghị chủ xe đặt giới hạn sạc hằng ngày ở mức 80% cho nhu cầu đi lại thông thường và chỉ sạc đầy 100% trước chuyến đi xa. Khuyến nghị này áp dụng cho các mẫu DEMO-A3 và DEMO-A5 dùng pin NMC theo sách hướng dẫn. Chủ xe nên tham khảo sách hướng dẫn của đúng phiên bản xe vì khuyến nghị có thể khác giữa các loại pin. Hãng lưu ý không tự can thiệp vào hệ thống pin điện áp cao.",
+   "supporting_sources": [],
+   "claims": [
+    {
+     "claim_key": "c1",
+     "text": "DEMO-A khuyến nghị giới hạn sạc hằng ngày 80% và chỉ sạc 100% trước chuyến đi xa",
+     "claim_type": "spec",
+     "subject": "giới hạn sạc khuyến nghị",
+     "value": "80",
+     "unit": "%",
+     "source_ids": [
+      "s1"
+     ],
+     "evidence_excerpt": "đặt giới hạn sạc hằng ngày ở mức 80%",
+     "is_key": true
+    },
+    {
+     "claim_key": "c2",
+     "text": "Khuyến nghị áp dụng cho DEMO-A3 và DEMO-A5 dùng pin NMC",
+     "claim_type": "spec",
+     "subject": "phạm vi áp dụng khuyến nghị",
+     "value": "DEMO-A3, DEMO-A5 NMC",
+     "source_ids": [
+      "s1"
+     ],
+     "evidence_excerpt": "áp dụng cho các mẫu DEMO-A3 và DEMO-A5 dùng pin NMC",
+     "is_key": true
+    },
+    {
+     "claim_key": "c3",
+     "text": "Không tự can thiệp vào hệ thống pin điện áp cao",
+     "claim_type": "safety",
+     "source_ids": [
+      "s1"
+     ],
+     "evidence_excerpt": "không tự can thiệp vào hệ thống pin điện áp cao",
+     "is_key": true
+    }
+   ]
+  },
+  {
+   "id": "demo-missing-source",
+   "title": "[DEMO] Một bài đăng lan truyền về giá xe điện mới không rõ xuất xứ",
+   "url": "",
+   "publisher": null,
+   "trust_tier": 3,
+   "published_at": null,
+   "raw_excerpt": "Một ảnh chụp màn hình lan truyền nói giá xe sẽ giảm mạnh tháng tới nhưng không có nguồn gốc.",
+   "claims": [
+    {
+     "claim_key": "c1",
+     "text": "Giá xe giảm mạnh tháng tới",
+     "claim_type": "price",
+     "subject": "giá xe",
+     "value": "giảm",
+     "source_ids": [],
+     "is_key": true
+    }
+   ]
+  },
+  {
+   "id": "demo-rumor",
+   "title": "[DEMO] Nghe nói hãng DEMO-A sắp miễn phí sạc vĩnh viễn?",
+   "url": "https://example.com/demo-forum/thread/12345",
+   "publisher": "Diễn đàn DEMO",
+   "trust_tier": 3,
+   "published_at": "now-10h",
+   "flags": [
+    "rumor"
+   ],
+   "raw_excerpt": "Tin đồn chưa xác nhận trên diễn đàn cho rằng hãng sắp miễn phí sạc vĩnh viễn.",
+   "claims": [
+    {
+     "claim_key": "c1",
+     "text": "Hãng sắp miễn phí sạc vĩnh viễn",
+     "claim_type": "charging_offer",
+     "subject": "miễn phí sạc",
+     "value": "vĩnh viễn",
+     "source_ids": [
+      "s1"
+     ],
+     "evidence_excerpt": "sắp miễn phí sạc vĩnh viễn",
+     "is_key": true
+    }
+   ]
+  },
+  {
+   "id": "demo-contested",
+   "title": "[DEMO] Mạng lưới trạm sạc DEMO-Volt hiện có bao nhiêu trạm?",
+   "url": "https://example.net/bao-demo-2/so-tram-sac-demo-volt",
+   "publisher": "Báo DEMO Đời Sống",
+   "trust_tier": 2,
+   "published_at": "now-20h",
+   "entities": [
+    "DEMO-Volt"
+   ],
+   "raw_excerpt": "Theo số liệu báo tổng hợp, mạng sạc DEMO-Volt hiện có 150 trạm đang vận hành tại các tỉnh phía Bắc và phía Nam.",
+   "supporting_sources": [
+    {
+     "source_id": "s2",
+     "url": "https://example.net/bao-demo/kinh-te/so-tram-demo-volt",
+     "publisher": "Báo DEMO Kinh Tế",
+     "trust_tier": 2,
+     "published_at": "now-22h",
+     "text": "Báo DEMO Kinh Tế ghi nhận mạng DEMO-Volt có 95 trạm đang vận hành."
+    }
+   ],
+   "claims": [
+    {
+     "claim_key": "c1",
+     "text": "DEMO-Volt có 150 trạm đang vận hành",
+     "claim_type": "station_count",
+     "subject": "số trạm đang vận hành DEMO-Volt",
+     "value": "150",
+     "unit": "trạm",
+     "source_ids": [
+      "s1"
+     ],
+     "evidence_excerpt": "hiện có 150 trạm đang vận hành",
+     "is_key": true
+    },
+    {
+     "claim_key": "c2",
+     "text": "DEMO-Volt có 95 trạm đang vận hành",
+     "claim_type": "station_count",
+     "subject": "số trạm đang vận hành DEMO-Volt",
+     "value": "95",
+     "unit": "trạm",
+     "source_ids": [
+      "s2"
+     ],
+     "evidence_excerpt": "có 95 trạm đang vận hành",
+     "is_key": true
+    }
+   ]
+  },
+  {
+   "id": "demo-p2-charge100-dup",
+   "title": "[DEMO] Hãng DEMO-A hướng dẫn mức sạc hằng ngày cho pin xe điện",
+   "url": "https://m.example.org/demo-a/ho-tro/huong-dan-sac-hang-ngay-ban-mobile",
+   "publisher": "Hãng xe DEMO-A (nguồn chính thức giả lập)",
+   "trust_tier": 1,
+   "published_at": "now-50h",
+   "model_names": [
+    "DEMO-A3",
+    "DEMO-A5"
+   ],
+   "raw_excerpt": "Hãng DEMO-A khuyến nghị chủ xe đặt giới hạn sạc hằng ngày ở mức 80% cho nhu cầu đi lại thông thường và chỉ sạc đầy 100% trước chuyến đi xa. Khuyến nghị này áp dụng cho các mẫu DEMO-A3 và DEMO-A5 dùng pin NMC theo sách hướng dẫn. Chủ xe nên tham khảo sách hướng dẫn của đúng phiên bản xe vì khuyến nghị có thể khác giữa các loại pin. Hãng lưu ý không tự can thiệp vào hệ thống pin điện áp cao.",
+   "claims": []
+  },
+  {
+   "id": "demo-mou",
+   "title": "[DEMO] Hãng DEMO-A ký biên bản ghi nhớ hợp tác xây trạm sạc với một chuỗi bán lẻ",
+   "url": "https://example.org/demo-a/tin-tuc/ky-mou-tram-sac-chuoi-ban-le",
+   "publisher": "Hãng xe DEMO-A (nguồn chính thức giả lập)",
+   "trust_tier": 1,
+   "published_at": "now-3d",
+   "entities": [
+    "Hãng xe DEMO-A",
+    "Chuỗi bán lẻ DEMO-Mart"
+   ],
+   "raw_excerpt": "Hãng DEMO-A và chuỗi bán lẻ DEMO-Mart ký biên bản ghi nhớ hợp tác nghiên cứu lắp đặt trạm sạc tại bãi đỗ xe của chuỗi. Hai bên sẽ khảo sát địa điểm trong giai đoạn tiếp theo. Thông báo chưa nêu thời điểm trạm đi vào vận hành.",
+   "claims": [
+    {
+     "claim_key": "c1",
+     "text": "DEMO-A và DEMO-Mart ký biên bản ghi nhớ (MOU) nghiên cứu lắp trạm sạc",
+     "claim_type": "general",
+     "source_ids": [
+      "s1"
+     ],
+     "evidence_excerpt": "ký biên bản ghi nhớ hợp tác nghiên cứu lắp đặt trạm sạc",
+     "is_key": true
+    },
+    {
+     "claim_key": "c2",
+     "text": "Thông báo chưa nêu thời điểm trạm đi vào vận hành",
+     "claim_type": "general",
+     "source_ids": [
+      "s1"
+     ],
+     "evidence_excerpt": "chưa nêu thời điểm trạm đi vào vận hành",
+     "is_key": true
+    }
+   ]
+  },
+  {
+   "id": "demo-old",
+   "title": "[DEMO] Nhìn lại thị trường xe điện giả lập năm trước",
+   "url": "https://example.net/bao-demo/tong-ket-thi-truong-nam-truoc",
+   "publisher": "Báo DEMO Kinh Tế",
+   "trust_tier": 2,
+   "published_at": "now-60d",
+   "raw_excerpt": "Bài tổng kết ngắn về thị trường xe điện giả lập của năm trước.",
+   "claims": []
+  }
+ ]
+}

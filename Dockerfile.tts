@@ -1,0 +1,12 @@
+# Worker TTS VieNeu (CPU/ONNX). GPU: dùng image CUDA và `pip install "vieneu[cuda]"`.
+FROM python:3.12-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core libsndfile1 && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY backend/pyproject.toml backend/pyproject.toml
+COPY backend/ev_studio backend/ev_studio
+RUN pip install --no-cache-dir "./backend[tts]"
+COPY prompts prompts
+COPY configs configs
+COPY fixtures fixtures
+ENV PYTHONPATH=/app/backend PYTHONUNBUFFERED=1
+CMD ["celery", "-A", "ev_studio.workers.celery_app", "worker", "-Q", "pipeline", "-c", "1", "--loglevel=INFO"]
