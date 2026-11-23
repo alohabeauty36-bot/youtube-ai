@@ -84,8 +84,16 @@ def key_sentence(text: str, max_words: int = 26) -> str:
 
 
 def assign_visuals(scenes: list[SceneSpec], *, claim_map: list[dict], claims: dict[str, dict], title: str,
-                   photo_assets: list[dict], has_timeline: bool, pillar: str) -> list[SceneSpec]:
-    """Gán kiểu cảnh. Mỗi cảnh: asset_id (ảnh hợp quyền) hoặc đồ họa nội bộ."""
+                   photo_assets: list[dict], has_timeline: bool, pillar: str,
+                   paragraph_photos: dict[int, list[dict]] | None = None,
+                   scene_paragraph: dict[int, int] | None = None) -> list[SceneSpec]:
+    """Gán kiểu cảnh. Mỗi cảnh: asset_id (ảnh hợp quyền / ảnh AI minh họa) hoặc đồ họa nội bộ.
+
+    `paragraph_photos`: ảnh đã tìm riêng cho từng đoạn lời đọc → được đặt vào cảnh của CHÍNH đoạn đó (mỗi ảnh một lần),
+    ưu tiên hơn ảnh dùng chung `photo_assets`. Đồ họa dữ kiện/công thức/timeline vẫn được ưu tiên trước ảnh."""
+    paragraph_photos = paragraph_photos or {}
+    scene_paragraph = scene_paragraph or {}
+    para_used: set[str] = set()
     excerpt_to_claim = [(strip_accents(e["relevant_script_excerpt"])[:80], e["claim_id"]) for e in claim_map]
     used_claims: set[str] = set()
     photo_i = 0
@@ -114,6 +122,11 @@ def assign_visuals(scenes: list[SceneSpec], *, claim_map: list[dict], claims: di
             used_types["pros_cons"] = True
         elif sc.text.strip().endswith("?") and last_type != "question":
             sc.visual_type = "question"
+        elif (pp := next((x for x in paragraph_photos.get(scene_paragraph.get(sc.idx, -1), []) if x["id"] not in para_used), None)):
+            para_used.add(pp["id"])
+            last_photo_idx = sc.idx
+            sc.visual_type = "photo"
+            sc.asset_ids = [pp["id"]]
         elif (photo_assets and sc.idx - last_photo_idx >= max(2, 8 // len(photo_assets))
               and any(photo_uses.get(x["id"], 0) < max_uses for x in photo_assets)):
             # luân phiên ảnh, mỗi ảnh tối đa 3 lần, giãn cách để tránh lặp khung hình

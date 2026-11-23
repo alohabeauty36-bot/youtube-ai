@@ -80,6 +80,60 @@ def test_pexels(s: Settings, client: httpx.Client | None = None) -> dict:
     return _fail(f"Pexels trả HTTP {r.status_code} — kiểm tra key")
 
 
+def test_media(s: Settings, client: httpx.Client | None = None) -> dict:
+    """Tìm thử một ảnh trên từng nguồn đang bật (Openverse, Wikimedia, Pexels, Pixabay)."""
+    from .media.finders import OpenverseFinder, PexelsFinder, PixabayFinder, WikimediaFinder
+    from .media.license_gate import evaluate
+
+    finders = []
+    if s.openverse_enabled:
+        finders.append(OpenverseFinder(s.wikimedia_user_agent, client=client, client_id=s.openverse_client_id,
+                                       client_secret=s.openverse_client_secret.get_secret_value() if s.openverse_client_secret else None))
+    if s.wikimedia_enabled:
+        finders.append(WikimediaFinder(s.wikimedia_user_agent, client=client))
+    if s.pexels_api_key:
+        finders.append(PexelsFinder(s.pexels_api_key.get_secret_value(), client=client))
+    if s.pixabay_api_key:
+        finders.append(PixabayFinder(s.pixabay_api_key.get_secret_value(), client=client))
+    if not finders:
+        return _fail("Chưa bật nguồn ảnh nào. Bật Openverse/Wikimedia hoặc nhập key Pexels/Pixabay.")
+    results = []
+    for f in finders:
+        try:
+            found = f.search("electric car charging", limit=3)
+            ok = [x for x in found if evaluate(x.__dict__).status == "approved"]
+            results.append({"provider": f.name, "ok": bool(ok), "found": len(found), "licensed": len(ok),
+                            "sample": ok[0].source_url if ok else None})
+        except Exception as e:  # noqa: BLE001
+            results.append({"provider": f.name, "ok": False, "error": redact(f"{type(e).__name__}: {e}")})
+    good = [r["provider"] for r in results if r["ok"]]
+    if good:
+        return _ok(f"Tìm được ảnh hợp quyền trên: {', '.join(good)}.", sources=results)
+    return _fail("Không nguồn nào trả ảnh hợp quyền — kiểm tra mạng/key.", sources=results)
+
+
+def test_gemini(s: Settings, client: httpx.Client | None = None) -> dict:
+    if s.image_gen_provider == "off":
+        return _ok("Đã tắt tạo ảnh AI: đoạn không tìm được ảnh sẽ dùng đồ họa nội bộ.")
+    if not s.gemini_api_key:
+        return _fail("Chưa nhập Gemini API key (tuỳ chọn). Thiếu key thì đoạn không có ảnh dùng đồ họa nội bộ.")
+    c = client or httpx.Client(timeout=15)
+    try:
+        r = c.get("https://generativelanguage.googleapis.com/v1beta/models", params={"pageSize": 1000},
+                  headers={"x-goog-api-key": s.gemini_api_key.get_secret_value()})
+    except httpx.HTTPError as e:
+        return _fail(f"Không kết nối được Gemini API: {type(e).__name__}")
+    if r.status_code in (400, 401, 403):
+        return _fail("Gemini API key không hợp lệ hoặc chưa bật Generative Language API")
+    if r.status_code != 200:
+        return _fail(f"Gemini API trả HTTP {r.status_code}")
+    models = [m["name"].removeprefix("models/") for m in r.json().get("models", [])
+              if "image" in m.get("name", "") and "generateContent" in (m.get("supportedGenerationMethods") or ["generateContent"])]
+    if s.gemini_image_model in models:
+        return _ok(f"Kết nối được. Model ảnh '{s.gemini_image_model}' khả dụng.", models=models)
+    return _fail(f"Key hợp lệ nhưng không thấy model ảnh '{s.gemini_image_model}'. Chọn một model trong danh sách.", models=models)
+
+
 def test_tts(s: Settings, client: httpx.Client | None = None) -> dict:
     p = s.tts_provider
     if p == "vieneu_http":
@@ -126,4 +180,5 @@ def test_youtube(s: Settings) -> dict:
                client_id=cfg["client_id"][:12] + "…")
 
 
-TESTS = {"anthropic": test_anthropic, "telegram": test_telegram, "pexels": test_pexels, "tts": test_tts, "youtube": test_youtube}
+TESTS = {"anthropic": test_anthropic, "telegram": test_telegram, "pexels": test_pexels, "media": test_media,
+         "gemini": test_gemini, "tts": test_tts, "youtube": test_youtube}

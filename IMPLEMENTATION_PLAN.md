@@ -17,7 +17,7 @@ Nguồn yêu cầu duy nhất: `docs/EV_CREATOR_STUDIO_MASTER_ALL_IN_ONE.md` (M�
 | Lịch | APScheduler (quét tin 3h/lần, chỉ chạy khi bật trong Settings) | không tự chạy khi mở dashboard |
 | LLM | Anthropic SDK, model cấu hình qua env, JSON validate bằng Pydantic | prompt đọc từ `prompts/youtube_script_10min.md` |
 | TTS | `TTSProvider` → `VieNeuLocalAdapter` / `VieNeuHttpAdapter` / `DemoTTSAdapter` | cache theo `(text_hash, voice, model_version)` |
-| Asset | `OwnLibraryFinder`, `PexelsFinder`, `WikimediaFinder`, đồ họa nội bộ Pillow; license gate bắt buộc | không tải ảnh Google |
+| Asset | Theo từng đoạn lời đọc: `OwnLibraryFinder` → `OpenverseFinder` → `WikimediaFinder` → `PexelsFinder` → `PixabayFinder`; không có ảnh hợp quyền mới gọi `GeminiImageGenerator` (ảnh minh họa AI); cuối cùng đồ họa nội bộ Pillow; license gate bắt buộc | không tải ảnh Google; ảnh AI luôn dán nhãn |
 | Render | FFmpeg 1920×1080 30fps H.264/AAC 48 kHz, subtitle SRT/ASS (burn-in libass), preview 360p, atomic rename | |
 | YouTube | google-api-python-client, OAuth web flow, resumable upload, **privacy hard-lock = private**, readback `videos.list`, đối soát chống trùng bằng tag idempotency | |
 | Telegram | Bot API qua httpx; callback token 1 lần, có hạn, allowlist chat_id | "Đã kiểm duyệt" chỉ đổi DB |
