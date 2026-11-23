@@ -1,7 +1,9 @@
 """Cấu hình ứng dụng. Không chứa secret mặc định; secrets đọc từ env/.env."""
 from __future__ import annotations
 
-from functools import lru_cache
+import secrets as _secrets
+import threading
+import time
 from pathlib import Path
 from typing import Literal
 
@@ -9,20 +11,25 @@ from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+PKG_DIR = Path(__file__).resolve().parent
+FONT_DIR = PKG_DIR / "assets" / "fonts"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=str(REPO_ROOT / ".env"), env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(env_file=str(REPO_ROOT / ".env"), env_file_encoding="utf-8", extra="ignore",
+                                      populate_by_name=True)
 
     # --- chế độ ---
     app_mode: Literal["demo", "production"] = "demo"
-    database_url: str = f"sqlite:///{REPO_ROOT / 'data' / 'ev_studio.db'}"
+    data_dir: Path = REPO_ROOT / "data"
+    database_url: str = f"sqlite:///{(REPO_ROOT / 'data' / 'ev_studio.db').as_posix()}"
     artifacts_dir: Path = REPO_ROOT / "artifacts"
     prompts_dir: Path = REPO_ROOT / "prompts"
     configs_dir: Path = REPO_ROOT / "configs"
     fixtures_dir: Path = REPO_ROOT / "fixtures"
     media_library_dir: Path = REPO_ROOT / "media_library"
     public_base_url: str = "http://localhost:8000"
+    trust_localhost: bool = Field(False, validation_alias="EVCS_TRUST_LOCALHOST")  # run.py bật khi chỉ nghe 127.0.0.1
     frontend_base_url: str = "http://localhost:3000"
     timezone: str = "Asia/Ho_Chi_Minh"
 
@@ -54,6 +61,7 @@ class Settings(BaseSettings):
     # --- YouTube ---
     youtube_provider: Literal["auto", "demo", "google"] = "auto"
     google_client_secrets_file: Path | None = None
+    google_client_secrets_json: SecretStr | None = None  # dán nội dung client_secret.json trong trang Cấu hình
     youtube_expected_channel_id: str | None = None
     youtube_made_for_kids_confirmed_false: bool = False  # chủ kênh xác nhận nội dung KHÔNG dành cho trẻ em
     youtube_contains_synthetic_media: bool = True  # giọng AI → khai báo nội dung tổng hợp
@@ -82,8 +90,8 @@ class Settings(BaseSettings):
     render_preset: str = "veryfast"
     render_burn_subtitles: bool = True
     render_fps: int = 30
-    font_path: Path = Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
-    font_bold_path: Path = Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
+    font_path: Path = FONT_DIR / "DejaVuSans.ttf"  # đóng gói kèm → chạy được trên Windows/macOS/Linux
+    font_bold_path: Path = FONT_DIR / "DejaVuSans-Bold.ttf"
 
     # --- jobs ---
     job_executor: Literal["inline", "celery"] = "inline"
@@ -92,7 +100,7 @@ class Settings(BaseSettings):
     job_backoff_base_seconds: float = 2.0
     job_concurrency: int = 2
 
-    @field_validator("artifacts_dir", "prompts_dir", "configs_dir", "fixtures_dir", "media_library_dir", mode="before")
+    @field_validator("data_dir", "artifacts_dir", "prompts_dir", "configs_dir", "fixtures_dir", "media_library_dir", mode="before")
     @classmethod
     def _abs(cls, v):
         p = Path(v)
@@ -114,10 +122,66 @@ class Settings(BaseSettings):
         return b"demo-only-insecure-secret-key-do-not-use-in-production"
 
 
-@lru_cache
+# ---------------------------------------------------------------------------------------------
+# Cấu hình nhiều lớp: mặc định < biến môi trường/.env < giá trị chủ kênh lưu trong trang Cấu hình (DB, mã hoá).
+# SECRET_KEY, DATABASE_URL, các thư mục là cấu hình hạ tầng → chỉ đọc từ env (không sửa qua giao diện).
+
+_base: Settings | None = None
+_cached: tuple[float, Settings] | None = None
+_lock = threading.RLock()
+CACHE_TTL_SECONDS = 15.0
+
+
+def _secret_file(data_dir: Path) -> Path:
+    return data_dir / ".secret_key"
+
+
+def get_base_settings() -> Settings:
+    """Settings từ env; tự sinh SECRET_KEY lưu ở data/.secret_key nếu chưa có (để mã hoá key API)."""
+    global _base
+    with _lock:
+        if _base is None:
+            s = Settings()
+            if not s.secret_key:
+                f = _secret_file(s.data_dir)
+                if not f.exists():
+                    f.parent.mkdir(parents=True, exist_ok=True)
+                    f.write_text(_secrets.token_urlsafe(48), encoding="utf-8")
+                    try:
+                        f.chmod(0o600)
+                    except OSError:  # Windows
+                        pass
+                s.secret_key = SecretStr(f.read_text(encoding="utf-8").strip())
+            _base = s
+        return _base
+
+
 def get_settings() -> Settings:
-    return Settings()
+    global _cached
+    with _lock:
+        now = time.monotonic()
+        if _cached and now - _cached[0] < CACHE_TTL_SECONDS:
+            return _cached[1]
+        base = get_base_settings()
+        from .runtime_config import load_overrides  # import muộn: tránh vòng lặp
+
+        ov = load_overrides(base)
+        if ov:
+            data = {k: v for k, v in base.model_dump().items()}
+            data.update(ov)
+            try:
+                merged = Settings.model_validate(data)
+            except Exception:  # giá trị DB hỏng không được làm sập ứng dụng
+                merged = base
+        else:
+            merged = base
+        _cached = (now, merged)
+        return merged
 
 
-def reset_settings_cache() -> None:
-    get_settings.cache_clear()
+def reset_settings_cache(base_too: bool = False) -> None:
+    global _cached, _base
+    with _lock:
+        _cached = None
+        if base_too:
+            _base = None

@@ -14,7 +14,7 @@ export default function News() {
   const router = useRouter();
   const create = async (n: any) => {
     setErr(null);
-    try { const st = await api("/api/stories", { method: "POST", json: { news_item_id: n.id } }); await api(`/api/stories/${st.id}/run`, { method: "POST" }); router.push(`/stories/${st.id}`); }
+    try { const st = await api("/api/stories", { method: "POST", json: { news_item_id: n.id } }); await api(`/api/stories/${st.id}/run`, { method: "POST" }); router.push(`/story/?id=${st.id}`); }
     catch (e) { setErr(e); }
   };
   const claimAct = async (c: any, status: string) => {

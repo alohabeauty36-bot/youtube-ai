@@ -22,6 +22,9 @@ dev = ["pytest>=8", "ruff>=0.5"]
 [tool.setuptools.packages.find]
 include = ["ev_studio*"]
 
+[tool.setuptools.package-data]
+ev_studio = ["assets/fonts/*", "web_dist/**/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["../tests"]
 addopts = "-q"

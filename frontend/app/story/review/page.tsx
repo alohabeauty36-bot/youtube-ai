@@ -1,10 +1,10 @@
 "use client";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { api, fmtDate, fmtTime, mediaUrl } from "@/lib/api";
 import { Badge, Card, ErrorBox } from "@/components/ui";
 import { StoryHeader, useStory } from "@/components/story";
 
-export default function Review() {
+function Review() {
   const { data: s, error, reload } = useStory();
   const [err, setErr] = useState<any>(null); const [busy, setBusy] = useState(""); const [confirm, setConfirm] = useState(false);
   const r = s?.render; const seo = s?.seo; const up = s?.uploads?.[0];
@@ -59,7 +59,7 @@ export default function Review() {
               <button disabled={!reviewable || !!busy} onClick={() => { const note = prompt("Cần sửa gì?"); if (note) call("rv", () => api(`/api/stories/${s.id}/review`, { method: "POST", json: { action: "request_revision", note } })); }}>Yêu cầu sửa</button>
               <button className="danger" disabled={!reviewable || !!busy} onClick={() => { if (window.confirm("Loại video này khỏi hàng đợi? (Không xoá trên YouTube)")) call("rj", () => api(`/api/stories/${s.id}/review`, { method: "POST", json: { action: "reject" } })); }}>Loại</button>
             </div>
-            <ul className="small">{s.reviews.map((e: any, i: number) => <li key={i}>{fmtDate(e.created_at)} · {e.actor} ({e.via}) · {e.action} {e.note} {e.new_story_id && <a href={`/stories/${e.new_story_id}`}>→ bản mới</a>}</li>)}</ul>
+            <ul className="small">{s.reviews.map((e: any, i: number) => <li key={i}>{fmtDate(e.created_at)} · {e.actor} ({e.via}) · {e.action} {e.note} {e.new_story_id && <a href={`/story/?id=${e.new_story_id}`}>→ bản mới</a>}</li>)}</ul>
           </Card>
           <Card title="Telegram">
             {s.telegram.length ? s.telegram.map((m: any, i: number) => <div key={i} className="small">{m.chat_id}: <Badge kind={m.status === "sent" ? "ok" : "bad"}>{m.status}</Badge> {m.is_demo && <Badge kind="demo">DEMO</Badge>} lần {m.attempts} {m.error}</div>) : <p className="small muted">Chưa gửi.</p>}
@@ -72,4 +72,8 @@ export default function Review() {
       </div>}
     </>
   );
+}
+
+export default function Page() {
+  return <Suspense fallback={<p className="muted">Đang tải…</p>}><Review /></Suspense>;
 }

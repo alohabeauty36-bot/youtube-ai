@@ -23,7 +23,7 @@ from ..models import (
 )
 from ..security import audit, encrypt_str, redact, setup_logging, sign_link, verify_link
 from ..state_machine import StoryState as S
-from .deps import Actor, current_actor, get_db, require_owner
+from .deps import Actor, current_actor, get_db, is_trusted_local, require_owner
 
 log = logging.getLogger(__name__)
 
@@ -31,19 +31,12 @@ log = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
-    s = get_settings()
-    if s.app_mode == "production":
-        missing = [k for k, v in {"SECRET_KEY": s.secret_key, "ADMIN_TOKEN": s.admin_token}.items() if not v]
-        if missing:
-            raise RuntimeError(f"Production thiếu {missing}")
     init_db()
+    from ..services.telegram.callbacks import start_polling
     from ..workers.schedules import start_scheduler
 
     start_scheduler()
-    if not s.is_demo and s.telegram_bot_token and not s.telegram_webhook_secret:
-        from ..services.telegram.callbacks import start_polling
-
-        start_polling()
+    start_polling()  # tự bật khi có bot token + production (cấu hình đổi được lúc chạy)
     yield
     from ..workers.schedules import stop_scheduler
 
@@ -189,7 +182,7 @@ def integrations(actor: Actor = Depends(current_actor)):
         "anthropic_model": s.anthropic_model,
         "tts": st(vieneu_installed or s.tts_provider == "vieneu_http", s.is_demo and s.tts_provider in ("auto", "demo")),
         "tts_provider": s.tts_provider, "voice": s.vieneu_voice,
-        "youtube": st(bool(s.google_client_secrets_file and Path(s.google_client_secrets_file).exists()), s.is_demo),
+        "youtube": st(bool(s.google_client_secrets_json or (s.google_client_secrets_file and Path(s.google_client_secrets_file).exists())), s.is_demo),
         "telegram": st(bool(s.telegram_bot_token and s.allowed_chat_ids), s.is_demo),
         "pexels": st(bool(s.pexels_api_key), s.is_demo),
         "privacy_policy": "Mọi upload: privacyStatus=private (không cấu hình được). Không có chức năng công khai.",
@@ -792,7 +785,7 @@ def oauth_callback(state: str, code: str, db: Session = Depends(get_db)):
     db.add(ch)
     audit(db, "owner", "channel.oauth_connected", "channel", me["id"], title=me["title"])
     db.commit()
-    return RedirectResponse(f"{s.frontend_base_url}/settings?connected={me['id']}")
+    return RedirectResponse(f"{s.public_base_url.rstrip('/')}/settings/?connected={me['id']}")
 
 
 @app.post("/api/telegram/webhook")
@@ -854,3 +847,58 @@ def dashboard(db: Session = Depends(get_db), actor: Actor = Depends(current_acto
               for s in db.scalars(select(Story).order_by(Story.updated_at.desc()).limit(50)) if s.blockers][:10]
     return {"by_state": by_state, "shortlist": news_by, "cost_usd": round(cost, 4), "channel": ch.title if ch else None,
             "settings": get_settings_api(db, actor), "alerts": alerts, "mode": get_settings().app_mode}
+
+
+# ------------------------------------------------------------------ cấu hình API (trang Thiết lập)
+
+@app.get("/api/config")
+def config_get(request: Request, db: Session = Depends(get_db), actor: Actor = Depends(require_owner)):
+    from ..runtime_config import describe
+
+    return describe(db) | {"local_access": is_trusted_local(request)}
+
+
+class ConfigUpdate(BaseModel):
+    values: dict = Field(default_factory=dict)
+    clear: list[str] = Field(default_factory=list)
+
+
+@app.put("/api/config")
+def config_put(body: ConfigUpdate, db: Session = Depends(get_db), actor: Actor = Depends(require_owner)):
+    """Lưu cấu hình. Trường bí mật để trống = giữ nguyên. Không có trường nào điều khiển privacy (luôn private)."""
+    from ..runtime_config import describe, save
+
+    try:
+        res = save(db, body.values, body.clear, actor.name)
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(400, str(e))
+    return {"updated": res.updated, "cleared": res.cleared, "restart_needed": res.restart_needed, **describe(db)}
+
+
+@app.post("/api/config/test/{service}")
+def config_test(service: str, send_test: bool = False, actor: Actor = Depends(require_owner)):
+    from ..config import reset_settings_cache
+    from ..services.connection_tests import TESTS
+
+    if service not in TESTS:
+        raise HTTPException(404, "Dịch vụ không hỗ trợ kiểm tra")
+    reset_settings_cache()
+    s = get_settings()
+    if service == "telegram":
+        return TESTS[service](s, send_test=send_test)
+    return TESTS[service](s)
+
+
+# ------------------------------------------------------------------ giao diện web (Next.js static export)
+
+WEB_DIST = Path(__file__).resolve().parents[1] / "web_dist"
+if WEB_DIST.is_dir() and (WEB_DIST / "index.html").exists():
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount("/", StaticFiles(directory=str(WEB_DIST), html=True), name="web")
+else:
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    def no_web():
+        return ("<h3>EV Creator Studio API đang chạy.</h3><p>Chưa có giao diện web đã build "
+                "(backend/ev_studio/web_dist). Chạy <code>python run.py --build-web</code> hoặc xem <a href='/docs'>/docs</a>.</p>")

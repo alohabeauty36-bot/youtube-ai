@@ -237,8 +237,10 @@ class DemoYouTubeClient:
 def make_oauth_flow(settings: Settings, state: str):
     from google_auth_oauthlib.flow import Flow
 
-    if not settings.google_client_secrets_file or not Path(settings.google_client_secrets_file).exists():
-        raise BlockedByCredentials("Thiếu GOOGLE_CLIENT_SECRETS_FILE (OAuth client từ Google Cloud Console)")
-    flow = Flow.from_client_secrets_file(str(settings.google_client_secrets_file), scopes=SCOPES, state=state,
-                                         redirect_uri=settings.public_base_url.rstrip("/") + "/api/oauth/google/callback")
-    return flow
+    redirect = settings.public_base_url.rstrip("/") + "/api/oauth/google/callback"
+    if settings.google_client_secrets_json:
+        cfg = json.loads(settings.google_client_secrets_json.get_secret_value())
+        return Flow.from_client_config(cfg, scopes=SCOPES, state=state, redirect_uri=redirect)
+    if settings.google_client_secrets_file and Path(settings.google_client_secrets_file).exists():
+        return Flow.from_client_secrets_file(str(settings.google_client_secrets_file), scopes=SCOPES, state=state, redirect_uri=redirect)
+    raise BlockedByCredentials("Chưa có OAuth client — dán client_secret.json trong Thiết lập → Cấu hình API → YouTube")

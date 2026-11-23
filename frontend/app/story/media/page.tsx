@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { api, fmtTime, mediaUrl } from "@/lib/api";
 import { Badge, Card, ErrorBox } from "@/components/ui";
 import { StoryHeader, useStory } from "@/components/story";
@@ -7,7 +7,7 @@ import { StoryHeader, useStory } from "@/components/story";
 const COLORS: Record<string, string> = { title: "#2ecc71", fact: "#3498db", formula: "#9b59b6", timeline: "#f1c40f", pros_cons: "#e67e22",
   question: "#1abc9c", photo: "#ecf0f1", narration: "#7f8c8d", credits: "#95a5a6" };
 
-export default function Media() {
+function Media() {
   const { data: s, error, reload } = useStory();
   const [err, setErr] = useState<any>(null);
   const total = s?.scenes?.length ? s.scenes[s.scenes.length - 1].end : 0;
@@ -50,4 +50,8 @@ export default function Media() {
       </>}
     </>
   );
+}
+
+export default function Page() {
+  return <Suspense fallback={<p className="muted">Đang tải…</p>}><Media /></Suspense>;
 }

@@ -1,10 +1,10 @@
 "use client";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { api, fmtTime, mediaUrl } from "@/lib/api";
 import { Badge, Card, ErrorBox } from "@/components/ui";
 import { StoryHeader, useStory } from "@/components/story";
 
-export default function Editor() {
+function Editor() {
   const { data: s, error, reload } = useStory();
   const [edit, setEdit] = useState<string | null>(null); const [err, setErr] = useState<any>(null);
   const [sample, setSample] = useState<string>(""); const [busy, setBusy] = useState("");
@@ -84,4 +84,8 @@ export default function Editor() {
       </div>}
     </>
   );
+}
+
+export default function Page() {
+  return <Suspense fallback={<p className="muted">Đang tải…</p>}><Editor /></Suspense>;
 }

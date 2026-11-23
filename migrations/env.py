@@ -8,8 +8,8 @@ from ev_studio.config import get_settings
 from ev_studio.db import Base
 
 config = context.config
-if config.config_file_name:
-    fileConfig(config.config_file_name)
+if config.config_file_name and config.attributes.get("configure_logger", True):
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 config.set_main_option("sqlalchemy.url", get_settings().database_url)
 target_metadata = Base.metadata
 

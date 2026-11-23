@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { api, fmtDate, getToken, setToken } from "@/lib/api";
 import { Badge, Card, ErrorBox, useLoad } from "@/components/ui";
+import { ConfigPanel } from "@/components/config";
 
 export default function Settings() {
   const [tok, setTok] = useState(""); const [err, setErr] = useState<any>(null);
@@ -17,9 +18,11 @@ export default function Settings() {
     <>
       <h2>Thiết lập & tài khoản</h2>
       <ErrorBox error={err || integ.error} />
+      <ConfigPanel />
+      <h3>Tài khoản & tự động hoá</h3>
       <div className="grid g2">
         <Card title="Đăng nhập dashboard">
-          <p className="small muted">Nhập ADMIN_TOKEN (chủ kênh) hoặc EDITOR_TOKEN. Token chỉ lưu trong trình duyệt này.</p>
+          <p className="small muted">Chỉ cần khi mở dashboard từ máy khác. Nhập mật khẩu chủ kênh hoặc biên tập viên (đặt ở mục Bảo mật dashboard). Lưu trong trình duyệt này.</p>
           <div className="row"><input type="password" value={tok} onChange={e => setTok(e.target.value)} placeholder="Bearer token" />
             <button onClick={() => { setToken(tok); location.reload(); }}>Lưu</button></div>
         </Card>
@@ -31,7 +34,7 @@ export default function Settings() {
           <p className="small muted">{integ.data?.privacy_policy}</p>
         </Card>
         <Card title="Kênh YouTube (OAuth)">
-          <p className="small muted">Ứng dụng dùng OAuth 2.0 chính thức (không dùng cookie/mật khẩu). Khi cấp quyền, chọn đúng kênh. Kênh khác YOUTUBE_EXPECTED_CHANNEL_ID sẽ bị chặn.</p>
+          <p className="small muted">Dùng OAuth 2.0 chính thức (không dùng cookie/mật khẩu). Cần dán client_secret.json ở mục YouTube phía trên trước. Khi cấp quyền, chọn đúng kênh; kênh khác ID kênh đích sẽ bị chặn.</p>
           <button onClick={() => act(async () => { const r = await api("/api/oauth/google/start"); location.href = r.authorization_url; })}>Kết nối kênh YouTube</button>
           <table style={{ marginTop: 10 }}><tbody>{(ch.data || []).map(c => <tr key={c.id}><td><b>{c.title}</b> {c.is_demo && <Badge kind="demo">DEMO</Badge>}<div className="small muted">{c.youtube_channel_id} · token {fmtDate(c.token_refreshed_at)}</div></td>
             <td>{c.selected ? <Badge kind="ok">Kênh đích</Badge> : <button onClick={() => act(() => api(`/api/settings/channels/${c.id}/select`, { method: "POST" }), ch.reload)}>Chọn làm kênh đích</button>}</td></tr>)}</tbody></table>

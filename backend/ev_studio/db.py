@@ -8,7 +8,7 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-from .config import get_settings
+from .config import get_base_settings, get_settings
 
 
 class Base(DeclarativeBase):
@@ -22,7 +22,7 @@ _SessionLocal: sessionmaker[Session] | None = None
 def get_engine() -> Engine:
     global _engine, _SessionLocal
     if _engine is None:
-        url = get_settings().database_url
+        url = get_base_settings().database_url
         kwargs: dict = {"pool_pre_ping": True}
         if url.startswith("sqlite"):
             path = url.replace("sqlite:///", "")

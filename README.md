@@ -9,51 +9,45 @@ Quy trình: quét tin hợp lệ → gom nguồn, tách claim, xác minh → ch�
 
 ---
 
-## 1. Chạy thử ngay (DEMO, không cần key)
+## 1. Chạy bằng một lệnh
 
-Yêu cầu: Python ≥ 3.11, FFmpeg có libass, Node 20 trở lên (để chạy dashboard).
-
-```bash
-python3 -m pip install -e "backend[dev]"     # hoặc: pip install -r <(cd backend && python -c ...) — xem pyproject.toml
-export PYTHONPATH=backend
-make test                                     # 76 test: unit + integration + E2E DEMO rút gọn (~2 phút)
-make demo                                     # toàn tuyến DEMO 10 phút: ra MP4 1080p, upload DEMO private, Telegram DEMO
-```
-
-Mở dashboard:
+Cần có: **Python 3.11 trở lên** và **FFmpeg**. Trên Windows, nếu chưa có FFmpeg, lệnh chạy sẽ hỏi để tự cài bằng winget.
 
 ```bash
-make api        # http://localhost:8000  (API + /docs)
-make web        # http://localhost:3000  (cd frontend && npm ci trước)
+python run.py          # Windows: bấm đúp start.bat (hoặc: py run.py) · macOS/Linux: ./start.sh
 ```
 
-Ở chế độ DEMO, mọi thứ đều có nhãn **DEMO — DỮ LIỆU GIẢ LẬP**:
-- Tin tức lấy từ `fixtures/news_demo.json`. Đây là 10 bài hư cấu (doanh nghiệp "DEMO-A", "DEMO-Charge"…, URL example.org), gồm 2 bài trùng, 1 bài thiếu nguồn, 1 tin đồn, 1 bài có số liệu mâu thuẫn và 1 bài chỉ là MOU.
-- Bộ viết `DemoWriter` dựng kịch bản từ template, **không phải Claude**.
-- `DemoTTSAdapter` **không phải giọng nói**. Nó sinh âm tone theo âm tiết để đo thời lượng và kiểm tra cả pipeline.
-- `DemoYouTubeClient` không upload thật. Nó ghi vào `artifacts/demo_youtube/videos.json`, có cờ giả lập mất mạng, sai kênh, timeout sau khi YouTube đã nhận video, và privacy đọc lại sai.
-- `DemoTelegramClient` ghi vào `artifacts/demo_telegram/outbox.jsonl`.
+**Lần chạy đầu**, lệnh này sẽ: tạo môi trường `.venv` riêng → cài thư viện → tạo database và khoá mã hoá (`data/.secret_key`) → chạy server → mở **http://localhost:8000**.
+**Các lần sau**, ứng dụng khởi động ngay. Giao diện web và API chạy chung một cổng, không cần Node.js.
 
-## 2. Chạy thật (production)
+| Tuỳ chọn | Ý nghĩa |
+|---|---|
+| `--with-tts` | Cài thêm VieNeu-TTS để dùng giọng đọc thật (CPU) |
+| `--port 8010` | Đổi cổng |
+| `--host 0.0.0.0` | Cho máy khác trong mạng truy cập. Khi đó **bắt buộc** đặt mật khẩu chủ kênh |
+| `--no-browser` | Không tự mở trình duyệt |
+| `--build-web` | Build lại giao diện từ `frontend/` (cần Node.js 20+, chỉ dành cho lập trình viên) |
 
-1. `cp .env.example .env`, đặt `APP_MODE=production`, rồi điền `SECRET_KEY` và `ADMIN_TOKEN` (bắt buộc).
-2. **Anthropic:** điền `ANTHROPIC_API_KEY` và chọn `ANTHROPIC_MODEL` là model mà tài khoản API của bạn được dùng. Gói Claude trên web không bao gồm quyền API.
-3. **VieNeu-TTS** (không sửa repo upstream):
-   - Chạy cùng máy: `pip install "backend[tts]"` (cài `vieneu==3.8.5`, CPU/ONNX), đặt `TTS_PROVIDER=vieneu_local`. Lần đầu chạy, model weights sẽ tải từ HuggingFace (vài trăm MB).
-   - Tách sang máy GPU: chạy server của repo VieNeu (`uv run python -m apps.openai_speech` hoặc `docker compose --profile api-gpu`), rồi đặt `TTS_PROVIDER=vieneu_http` và `VIENEU_HTTP_URL`.
-   - Giọng mặc định là `Quang Sơn`. Giọng "Hải Đăng" mà đặc tả gợi ý **không có** trong 25 preset v3 Turbo hiện hành. Nên nghe mẫu 30 giây ở trang Biên tập trước khi chốt giọng.
-4. **YouTube:**
-   - Trong Google Cloud Console, bật YouTube Data API v3 và tạo OAuth client loại *Web application*.
-   - Thêm redirect URI `PUBLIC_BASE_URL/api/oauth/google/callback`.
-   - Lưu file client vào `secrets/client_secret.json` và đặt `YOUTUBE_EXPECTED_CHANNEL_ID=UC…`.
-   - Trong dashboard, vào **Thiết lập**, bấm **Kết nối kênh YouTube** và chọn đúng kênh, rồi bấm **Chọn làm kênh đích**.
-   - Scope sử dụng: `youtube.upload` và `youtube.readonly`. Token được mã hoá Fernet trước khi lưu. Ứng dụng không dùng cookie hay mật khẩu.
-5. **Telegram:** tạo bot bằng @BotFather, điền `TELEGRAM_BOT_TOKEN` và `TELEGRAM_ALLOWED_CHAT_IDS`.
-   - Chạy local thì để trống `TELEGRAM_WEBHOOK_SECRET`, ứng dụng sẽ tự dùng long-polling.
-   - Chạy VPS có HTTPS thì đặt webhook `https://…/api/telegram/webhook` kèm `secret_token`.
-6. **Media:** điền `PEXELS_API_KEY` (tuỳ chọn). Wikimedia Commons chỉ nhận các giấy phép CC0, PD, CC BY và CC BY-SA. Ảnh của bạn đặt trong `media_library/`, mỗi file kèm một `<tên>.license.json` (xem `backend/ev_studio/demo.py`).
-7. **Nguồn tin:** thêm RSS chính thức trong mục **Thiết lập → Nguồn tin**. Hệ thống tôn trọng `robots.txt`, có rate limit và chỉ dùng tiêu đề cùng tóm tắt có trong feed, không vượt paywall.
-8. Chạy: `docker compose up -d --build`, hoặc chạy native bằng `alembic upgrade head && make api && make web`.
+Lần đầu, ứng dụng ở chế độ **DEMO**: mọi dữ liệu đều giả lập và gắn nhãn, không upload thật. Bạn bấm **Săn tin → Quét tin ngay** để xem cả quy trình hoạt động.
+
+## 2. Cấu hình API ngay trong ứng dụng
+
+Mở **Thiết lập → Cấu hình API & dịch vụ**. Không cần sửa file nào. Key và token được mã hoá trước khi lưu vào database. Sau khi lưu, ứng dụng chỉ hiện lại 4 ký tự cuối. Giá trị nhập ở đây ghi đè file `.env`. Mỗi nhóm đều có nút **Kiểm tra** để thử kết nối.
+
+| Nhóm | Bạn nhập | Nút "Kiểm tra" làm gì |
+|---|---|---|
+| Claude (Anthropic) | API key (tạo ở console.anthropic.com), chọn model | Liệt kê model mà tài khoản được dùng; bấm vào tên model để chọn |
+| Giọng đọc VieNeu | `vieneu_local` (sau khi chạy `python run.py --with-tts`) hoặc `vieneu_http` + địa chỉ server GPU; chọn giọng | Kiểm tra thư viện đã cài hoặc server có phản hồi |
+| YouTube | Dán hoặc tải lên `client_secret.json` (OAuth client loại *Web application*), ID kênh đích | Kiểm tra JSON và redirect URI. Trang hiển thị sẵn URI để bạn sao chép vào Google Cloud Console |
+| Telegram | Bot token (lấy từ @BotFather) | Xác nhận bot hoạt động, liệt kê các chat vừa nhắn `/start` để bấm **Cho phép**, rồi gửi tin nhắn thử |
+| Kho tư liệu | Pexels key (tuỳ chọn), bật/tắt Wikimedia | Tìm thử một ảnh |
+| Biên tập, Dựng video, Bảo mật | Thời lượng, ngưỡng Autopilot, preset FFmpeg, mật khẩu chủ kênh/biên tập viên | — |
+
+Sau khi nhập key, đổi **Chế độ** sang `production`, rồi bấm **Kết nối kênh YouTube** để cấp quyền và chọn đúng kênh. Nếu thiếu key, video sẽ dừng ở trạng thái `BLOCKED_BY_CREDENTIALS` kèm đường dẫn mở trang Thiết lập, chứ không lặng lẽ chuyển sang dữ liệu giả lập.
+
+**Truy cập:** khi mở trên chính máy chạy ứng dụng (127.0.0.1), bạn không cần mật khẩu. Khi truy cập từ máy khác, ứng dụng yêu cầu mật khẩu chủ kênh hoặc biên tập viên. Nếu ứng dụng nằm sau reverse proxy, các request có header proxy **không** được tin là truy cập cục bộ.
+
+**Dành cho lập trình viên:** `make test` chạy 90 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8000.
 
 ### Windows 11
 Nên dùng WSL2 (Ubuntu) với Docker Desktop. Cách native cũng chạy được với Python 3.12, FFmpeg (gyan.dev, có libass) và `pip install vieneu` (CPU/ONNX). GPU CUDA trên Windows cần cài `torch==2.8.0` cu128 trước, theo README của VieNeu.
@@ -78,9 +72,11 @@ backend/ev_studio/
 prompts/youtube_script_10min.md   Mục III nguyên văn (Claude đọc từ file, không hard-code)
 prompts/pillars/P1|P2|P3.md       hồ sơ trụ cột
 prompts/reference/…               Mục IV nguyên văn (tham khảo văn phong)
-frontend/                         Next.js 15 + TypeScript: 6 màn hình
+frontend/                         Next.js 15 + TypeScript (xuất tĩnh → backend/ev_studio/web_dist, backend phục vụ)
 migrations/                       Alembic
-tests/                            76 test
+tests/                            90 test
+run.py, start.bat, start.sh       chạy bằng một lệnh
+backend/ev_studio/runtime_config.py  cấu hình API lưu mã hoá trong DB
 ```
 
 **Ba loại duyệt được tách riêng:**
@@ -105,3 +101,4 @@ tests/                            76 test
 - Chưa có vision tự kiểm tra mẫu xe trong ảnh. Ảnh gắn mẫu xe khác chủ đề tự động bị dán nhãn "minh họa"; ảnh không ghi mẫu xe cũng bị coi là minh họa.
 - Ken Burns chỉ áp dụng cho cảnh ảnh thật. Chưa trộn nhạc nền.
 - Dashboard dùng CSS thuần thay cho Tailwind, để giảm phụ thuộc build.
+- `run.py` đã được chạy thử trên Linux từ thư mục sạch (tạo `.venv`, cài thư viện, migrate, phục vụ giao diện). Chưa thử trên máy Windows thật; đường dẫn FFmpeg, font và venv đã được viết để chạy được trên Windows.

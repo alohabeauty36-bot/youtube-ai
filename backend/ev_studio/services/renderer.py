@@ -45,12 +45,10 @@ def compose(scene_clips: list[Path], audio: Path, subtitles_ass: Path | None, ou
     s = get_settings()
     work.mkdir(parents=True, exist_ok=True)
     lst = work / "concat.txt"
-    lst.write_text("".join(f"file '{p.resolve()}'\n" for p in scene_clips), encoding="utf-8")
+    lst.write_text("".join(f"file '{p.resolve().as_posix()}'\n" for p in scene_clips), encoding="utf-8")
     vf = ["fps=%d" % s.render_fps, "format=yuv420p"]
     if subtitles_ass and s.render_burn_subtitles:
-        fontsdir = str(Path(s.font_path).parent)
-        esc = str(subtitles_ass.resolve()).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
-        vf.append(f"subtitles='{esc}':fontsdir='{fontsdir}'")
+        vf.append(f"subtitles='{_ff_escape(subtitles_ass)}':fontsdir='{_ff_escape(Path(s.font_path).parent)}'")
     tmp = out.with_suffix(".tmp.mp4")
     _run(["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", str(lst), "-i", str(audio),
           "-map", "0:v:0", "-map", "1:a:0", "-vf", ",".join(vf),
@@ -59,6 +57,11 @@ def compose(scene_clips: list[Path], audio: Path, subtitles_ass: Path | None, ou
           "-shortest", "-movflags", "+faststart", str(tmp)])
     os.replace(tmp, out)
     return out
+
+
+def _ff_escape(p: Path) -> str:
+    """Đường dẫn trong filtergraph FFmpeg: dùng '/', escape ':' (ổ đĩa Windows C:) và dấu nháy."""
+    return p.resolve().as_posix().replace(":", "\\:").replace("'", "\\'")
 
 
 def preview_360p(src: Path, out: Path) -> Path:

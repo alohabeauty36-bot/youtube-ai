@@ -68,10 +68,16 @@ def start_polling() -> None:
     from ...providers import get_telegram
 
     def loop():
-        tg = get_telegram()
+        from ...config import get_settings
+
         offset = None
         while True:
+            s = get_settings()  # cấu hình có thể đổi trong trang Cấu hình → kiểm tra lại mỗi vòng
+            if s.is_demo or not s.telegram_bot_token or s.telegram_webhook_secret:
+                time.sleep(15)
+                continue
             try:
+                tg = get_telegram()
                 for u in tg.get_updates(offset):
                     offset = u["update_id"] + 1
                     if "callback_query" in u:

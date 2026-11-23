@@ -60,8 +60,8 @@ export function useLoad<T = any>(path: string | null, pollMs?: (d: T | null) => 
 }
 
 export function StoryTabs({ id, active }: { id: string; active: "editor" | "media" | "review" }) {
-  const tabs = [["editor", "Biên tập & Audio", `/stories/${id}`], ["media", "Timeline & Tư liệu", `/stories/${id}/media`],
-    ["review", "Xem trước · SEO · YouTube riêng tư", `/stories/${id}/review`]] as const;
+  const tabs = [["editor", "Biên tập & Audio", `/story/?id=${id}`], ["media", "Timeline & Tư liệu", `/story/media/?id=${id}`],
+    ["review", "Xem trước · SEO · YouTube riêng tư", `/story/review/?id=${id}`]] as const;
   return <nav className="tabs">{tabs.map(([k, l, h]) => <Link key={k} href={h} className={k === active ? "on" : ""}>{l}</Link>)}</nav>;
 }
 

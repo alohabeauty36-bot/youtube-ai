@@ -67,7 +67,7 @@ _PATTERNS = [
     re.compile(r"\b\d{6,12}:[A-Za-z0-9_\-]{30,}\b"),  # Telegram bot token
     re.compile(r"ya29\.[A-Za-z0-9_\-\.]+"),  # Google access token
     re.compile(r"1//[A-Za-z0-9_\-]{20,}"),  # Google refresh token
-    re.compile(r"(?i)(refresh_token|access_token|client_secret|api[_-]?key|authorization)([\"'\s:=]+)([^\s\"',}]+)"),
+    re.compile(r"(?i)(refresh_token|access_token|client_secret|api[_-]?key|authorization)(\s*[\"']?\s*[:=]\s*[\"']?\s*(?:bearer\s+)?)([^\s\"',}]+)"),
     re.compile(r"bot\d{6,12}:[A-Za-z0-9_\-]+"),
 ]
 

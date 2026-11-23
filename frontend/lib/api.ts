@@ -1,5 +1,6 @@
 // Client API: token lưu ở localStorage của trình duyệt chủ kênh; không bao giờ gửi secret dịch vụ ra frontend.
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
+// Mặc định cùng địa chỉ với backend (giao diện được backend phục vụ). Khi dev bằng `next dev`: NEXT_PUBLIC_API_BASE=http://localhost:8000
+export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
 
 export function getToken(): string {
   if (typeof window === "undefined") return "";

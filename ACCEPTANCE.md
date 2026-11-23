@@ -3,13 +3,14 @@
 Ngày chạy: 23/11/2026, máy build Linux, 2 vCPU, không GPU, không có credential thật.
 `PASS` chỉ được ghi khi đã có lần chạy thật. Những tích hợp chưa có key được ghi `BLOCKED_BY_CREDENTIALS`, kèm lý do cụ thể.
 
-**Lệnh chung:** `make test` → **76 passed** (pytest, khoảng 95 giây). `make demo` → toàn tuyến DEMO 10 phút **PASS**: MP4 1080p dài 596,8 giây, Media QA 14/14 đạt, upload DEMO `private`, đọc lại `private`, Telegram DEMO đã gửi, story ở trạng thái `EDITOR_REVIEW`, tổng thời gian khoảng 5,4 phút.
+**Lệnh chung:** `python run.py` khởi chạy toàn bộ ứng dụng (đã thử từ thư mục sạch trên Linux). `make test` → **90 passed** (pytest, khoảng 105 giây). `make demo` → toàn tuyến DEMO 10 phút **PASS**: MP4 1080p dài 596,8 giây, Media QA 14/14 đạt, upload DEMO `private`, đọc lại `private`, Telegram DEMO đã gửi, story ở trạng thái `EDITOR_REVIEW`, tổng thời gian khoảng 5,4 phút.
 
 ## Mục V — Điểm kiểm soát bàn giao
 
 | requirement | implementation_path | test_command | test_result | external_credentials_needed | notes |
 |---|---|---|---|---|---|
-| 1. Cài đặt & khởi chạy | `backend/pyproject.toml`, `Makefile`, `docker-compose.yml`, `/api/health` | `make api` + `curl :8000/api/health`; `cd frontend && npx next build` | PASS | — | Đã khởi chạy uvicorn và next, chụp 7 màn hình bằng Playwright. Chưa chạy `docker compose build` (máy build không có Docker). |
+| 1. Cài đặt & khởi chạy | `run.py`, `start.bat`, `start.sh`, `docker-compose.yml`, `/api/health` | `python run.py` (thư mục sạch) + `curl :8000/api/health` | PASS (Linux) | — | Một lệnh: tạo .venv, cài thư viện, migrate, phục vụ giao diện và API cùng một cổng. Chưa thử trên Windows thật, chưa chạy `docker compose build`. |
+| 1b. Cấu hình API trong giao diện | `runtime_config.py`, `services/connection_tests.py`, `/api/config`, trang Thiết lập | `pytest tests/test_config.py` | PASS | — | Lưu mã hoá, che giá trị, kiểm tra kết nối từng dịch vụ (dùng mock), chỉ chủ kênh được sửa. |
 | 2. Ingest nguồn tin | `services/ingest.py`, `services/ranker.py`, `services/sources/fetcher.py` | `pytest tests/test_news_factcheck.py` | PASS | RSS chính thức (chủ kênh chọn) | 10 URL: 2 trùng (khớp canonical_url + hash nội dung), 1 thiếu nguồn bị chặn; lưu đủ published/event/effective. |
 | 3. Fact checking | `services/fact_checker.py` | `pytest tests/test_news_factcheck.py tests/test_api_duration.py::test_claim_manual_verify_requires_source_and_note` | PASS | — | Claim nhạy cảm cần nguồn cấp 1 hoặc ≥ 2 nguồn độc lập. Trích dẫn phải khớp văn bản nguồn. Xung đột trong bài và giữa các bài → `[CẦN XÁC MINH]`. Có freshness_check. |
 | 4. Claude writer | `services/claude_writer.py`, `prompts/youtube_script_10min.md` (= Mục III) | `pytest tests/test_writer_and_script_qa.py` | PASS (mock) / BLOCKED_BY_CREDENTIALS (thật) | `ANTHROPIC_API_KEY` | Prompt đọc từ file, test chứng minh file trùng nguyên văn Mục III. JSON validate bằng Pydantic. Chưa gọi Anthropic thật. |

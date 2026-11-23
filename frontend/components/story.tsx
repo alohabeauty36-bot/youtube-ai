@@ -1,5 +1,5 @@
 "use client";
-import { useParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { api } from "@/lib/api";
 import { Badge, DemoBanner, ErrorBox, StateBadge, StoryTabs, useLoad } from "@/components/ui";
@@ -7,8 +7,8 @@ import { Badge, DemoBanner, ErrorBox, StateBadge, StoryTabs, useLoad } from "@/c
 const RUNNING_STATES = ["RESEARCHING", "RENDERING", "UPLOADING"];
 
 export function useStory() {
-  const { id } = useParams<{ id: string }>();
-  const r = useLoad<any>(`/api/stories/${id}`, d => (d?.running || RUNNING_STATES.includes(d?.state) ? 2500 : null));
+  const id = useSearchParams().get("id") || "";
+  const r = useLoad<any>(id ? `/api/stories/${id}` : null, d => (d?.running || RUNNING_STATES.includes(d?.state) ? 2500 : null));
   return { id, ...r };
 }
 
@@ -25,8 +25,9 @@ export function StoryHeader({ s, active, reload }: { s: any; active: "editor" | 
         {s.running && <Badge kind="warn">đang xử lý…</Badge>}
         <span className="right"><button onClick={run} disabled={s.running}>Chạy tiếp / thử lại</button></span>
       </div>
-      {s.parent_story_id && <p className="small muted">Phiên bản sửa của <a href={`/stories/${s.parent_story_id}`}>bản trước</a>.</p>}
-      {s.blockers?.length > 0 && <div className="error"><b>Đang bị chặn:</b><ul>{s.blockers.map((b: string, i: number) => <li key={i}>{b}</li>)}</ul></div>}
+      {s.parent_story_id && <p className="small muted">Phiên bản sửa của <a href={`/story/?id=${s.parent_story_id}`}>bản trước</a>.</p>}
+      {s.blockers?.length > 0 && <div className="error"><b>Đang bị chặn:</b><ul>{s.blockers.map((b: string, i: number) => <li key={i}>{b}</li>)}</ul>
+        {s.blockers.some((b: string) => b.includes("BLOCKED_BY_CREDENTIALS")) && <a href="/settings/">→ Mở Thiết lập để nhập/kiểm tra key API, rồi bấm “Chạy tiếp / thử lại”.</a>}</div>}
       {s.last_error && !s.blockers?.length && s.state.startsWith("FAILED") && <div className="error small">{s.last_error}</div>}
       <ErrorBox error={err} />
       <StoryTabs id={s.id} active={active} />

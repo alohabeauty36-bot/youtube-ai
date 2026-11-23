@@ -38,7 +38,7 @@ export default function Dashboard() {
       </div>
       {msg && <pre className="small">{msg}</pre>}
       {data?.alerts?.length > 0 && <Card title="⚠️ Cần chú ý">
-        {data.alerts.map((a: any) => <div key={a.story_id} className="news-card"><Link href={`/stories/${a.story_id}`}><b>{a.topic}</b></Link> — {STATE_LABEL[a.state] || a.state}
+        {data.alerts.map((a: any) => <div key={a.story_id} className="news-card"><Link href={`/story/?id=${a.story_id}`}><b>{a.topic}</b></Link> — {STATE_LABEL[a.state] || a.state}
           <ul>{a.blockers.map((b: string, i: number) => <li key={i} className="small">{b}</li>)}</ul></div>)}
       </Card>}
       <Card title="Video theo trạng thái">
