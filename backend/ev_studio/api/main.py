@@ -112,10 +112,13 @@ def story_detail(db: Session, st: Story) -> dict:
         scenes = list(db.scalars(select(Scene).where(Scene.story_id == st.id, Scene.script_version_id == cur.id).order_by(Scene.idx)))
         out["scenes"] = [{"idx": sc.idx, "start": sc.start_seconds, "end": sc.end_seconds, "visual_type": sc.visual_type,
                           "asset_ids": sc.asset_ids, "claim_ids": sc.claim_ids, "caption": sc.payload.get("caption"),
+                          "paragraph_idx": sc.payload.get("paragraph_idx"), "ai_generated": bool(sc.payload.get("ai_generated")),
                           "image_url": media_url(st.id, f"scene_{sc.idx}")} for sc in scenes]
     out["assets"] = [{"id": a.id, "provider": a.provider, "source_url": a.source_url, "creator": a.creator,
                       "review_status": a.review_status, "rejection_reason": a.rejection_reason, "is_illustration": a.is_illustration,
-                      "scene_description": a.scene_description, "is_demo": a.is_demo,
+                      "scene_description": a.scene_description, "is_demo": a.is_demo, "is_ai_generated": a.is_ai_generated,
+                      "paragraph_idx": a.paragraph_idx, "search_query": a.search_query, "model_name": a.model_name,
+                      "current": a.paragraph_idx is None or a.script_version_id == st.current_script_version_id,
                       "license": {"name": a.license.license_name, "url": a.license.license_url, "commercial": a.license.allowed_commercial,
                                   "attribution": a.license.attribution_text, "proof": a.license.permission_proof} if a.license else None}
                      for a in db.scalars(select(Asset).where(Asset.story_id == st.id))]
@@ -494,6 +497,8 @@ def assets_search(sid: str, db: Session = Depends(get_db), actor: Actor = Depend
     from ..workers.jobs import media_job
 
     st = get_story(db, sid)
+    if not st.current_script_version_id:
+        raise HTTPException(409, "Chưa có kịch bản — tìm hình theo từng đoạn cần lời đọc")
     res = media_job(db, st, Providers())
     db.commit()
     return res
@@ -523,7 +528,8 @@ def patch_asset(aid: str, body: AssetPatch, db: Session = Depends(get_db), actor
             setattr(lic, k, getattr(body, k))
     a.license = lic
     if body.review_status == "approved":
-        dec = evaluate({"provider": a.provider, "license_name": lic.license_name, "allowed_commercial": lic.allowed_commercial,
+        dec = evaluate({"provider": a.provider, "is_ai_generated": a.is_ai_generated,
+                        "license_name": lic.license_name, "allowed_commercial": lic.allowed_commercial,
                         "attribution_required": lic.attribution_required, "attribution_text": lic.attribution_text,
                         "permission_proof": lic.permission_proof, "source_url": a.source_url})
         if dec.status != "approved":

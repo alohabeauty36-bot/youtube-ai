@@ -34,18 +34,23 @@ function Media() {
         </Card>
         <Card title="Cảnh">
           <div className="thumbs">{(s.scenes || []).map((c: any) => <div key={c.idx}><img src={mediaUrl(c.image_url)} alt={c.caption} loading="lazy" />
-            <div className="small"><b>#{c.idx}</b> {fmtTime(c.start)}–{fmtTime(c.end)} <Badge>{c.visual_type}</Badge> {c.asset_ids.length ? <Badge kind="ok">asset</Badge> : <Badge>đồ họa nội bộ</Badge>}
+            <div className="small"><b>#{c.idx}</b> {fmtTime(c.start)}–{fmtTime(c.end)} {c.paragraph_idx != null && <span className="muted">đoạn {c.paragraph_idx + 1}</span>} <Badge>{c.visual_type}</Badge> {c.asset_ids.length ? (c.ai_generated ? <Badge kind="warn">ảnh AI</Badge> : <Badge kind="ok">asset</Badge>) : <Badge>đồ họa nội bộ</Badge>}
               {c.claim_ids.map((x: string) => <Badge key={x} kind="info">{x}</Badge>)}</div></div>)}</div>
         </Card>
-        <Card title="Tư liệu & giấy phép" right={<button onClick={async () => { try { await api(`/api/stories/${s.id}/assets/search`, { method: "POST" }); reload(); } catch (e) { setErr(e); } }}>Tìm tư liệu</button>}>
-          <table><thead><tr><th>Nguồn</th><th>Mô tả</th><th>Giấy phép</th><th>Trạng thái</th><th></th></tr></thead><tbody>
-            {s.assets.map((a: any) => <tr key={a.id}><td>{a.provider} {a.is_demo && <Badge kind="demo">DEMO</Badge>}<div className="small muted">{a.creator}</div></td>
-              <td className="small">{a.scene_description} {a.is_illustration && <Badge kind="warn">minh họa</Badge>}</td>
+        <Card title="Tư liệu & giấy phép" right={<button onClick={async () => { try { await api(`/api/stories/${s.id}/assets/search`, { method: "POST" }); reload(); } catch (e) { setErr(e); } }}>Tìm ảnh cho từng đoạn</button>}>
+          <table><thead><tr><th>Đoạn</th><th>Nguồn</th><th>Mô tả</th><th>Giấy phép</th><th>Trạng thái</th><th></th></tr></thead><tbody>
+            {s.assets.filter((a: any) => a.current !== false).map((a: any) => <tr key={a.id}>
+              <td className="small">{a.paragraph_idx != null ? `#${a.paragraph_idx + 1}` : "dùng chung"}{a.search_query && <div className="muted" title={a.search_query}>“{a.search_query.slice(0, 40)}”</div>}</td>
+              <td>{a.provider} {a.is_demo && <Badge kind="demo">DEMO</Badge>} {a.is_ai_generated && <Badge kind="warn">AI</Badge>}<div className="small muted">{a.creator}</div>
+                {a.source_url && <div className="small"><a href={a.source_url} target="_blank" rel="noreferrer">trang gốc</a></div>}</td>
+              <td className="small">{a.scene_description} {a.is_illustration && <Badge kind="warn">minh họa</Badge>} {a.model_name && <Badge kind="info">{a.model_name}</Badge>}</td>
               <td className="small">{a.license?.name || <span style={{ color: "#ff9c90" }}>THIẾU</span>}<div className="muted">{a.license?.attribution}</div></td>
               <td><Badge kind={a.review_status === "approved" ? "ok" : a.review_status === "rejected" ? "bad" : "warn"}>{a.review_status}</Badge><div className="small muted">{a.rejection_reason}</div></td>
               <td className="row"><button onClick={() => review(a, "approved")}>Duyệt</button><button onClick={() => review(a, "rejected")}>Loại</button></td></tr>)}
           </tbody></table>
-          <p className="small muted">Ảnh tìm từ web/Google chỉ là tham chiếu, không bao giờ được tải tự động. Asset thiếu bằng chứng quyền sử dụng bị loại và thay bằng đồ họa tự dựng.</p>
+          <p className="small muted">Mỗi đoạn lời đọc được tìm ảnh <b>trên mạng trước</b> (thư viện của bạn → Openverse → Wikimedia → Pexels → Pixabay), chỉ nhận ảnh có giấy phép cho phép dùng thương mại.
+            Đoạn <b>không có ảnh hợp quyền</b> mới gọi Gemini tạo ảnh minh họa (gắn nhãn “Minh họa AI”, không dùng làm thumbnail); đoạn nói về sự cố/sự kiện có thật hoặc đã hết trần ảnh AI thì dùng đồ họa tự dựng.
+            Ảnh Google/web search không có giấy phép chỉ là tham chiếu, không bao giờ được tải.</p>
         </Card>
       </>}
     </>

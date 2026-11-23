@@ -130,7 +130,8 @@ def migrate() -> None:
     insp = inspect(get_engine())
     tables = set(insp.get_table_names())
     if "stories" in tables and "alembic_version" not in tables:
-        command.stamp(cfg, "head")
+        cols = {c["name"] for c in insp.get_columns("assets")} if "assets" in tables else set()
+        command.stamp(cfg, "head" if "origin_key" in cols else "0001")  # DB tạo bằng create_all trước bản 0002
     command.upgrade(cfg, "head")
 
 

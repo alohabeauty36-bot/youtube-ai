@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..errors import ChannelMismatch, GateBlocked, PermanentError, PrivacyViolation, RetryableError
 from ..models import (
-    AppSetting, Asset, AssetLicense, Channel, Claim, CostUsage, NewsItem, Render, ResearchPack, ReviewEvent, Scene,
+    AppSetting, Asset, Channel, Claim, CostUsage, NewsItem, Render, ResearchPack, ReviewEvent, Scene,
     ScriptVersion, SEOVariant, Story, TelegramCallbackToken, TelegramMessage, TTSSegment, YouTubeUpload, now,
 )
 from ..providers import Providers, youtube_mode
@@ -21,8 +21,7 @@ from ..services import media_qa, renderer, seo, storyboard, subtitles, thumbnail
 from ..services.claude_writer import load_prompts
 from ..services.llm import estimate_usd
 from ..services.media import graphics
-from ..services.media.finders import download
-from ..services.media.license_gate import evaluate, file_sha256
+from ..services.media.license_gate import file_sha256
 from ..services.script_qa import run_script_qa
 from ..services.telegram.bot import build_buttons, build_review_message
 from ..services.tts.base import chunk_script
@@ -248,40 +247,76 @@ def tts_job(session: Session, story: Story, p: Providers) -> dict:
 
 # ------------------------------------------------------------------ 6. media
 
+def script_paragraphs(session: Session, sv: ScriptVersion) -> tuple[list[dict], dict[int, int]]:
+    """Đoạn lời đọc (theo paragraph_idx của TTS) + số cảnh dự kiến của mỗi đoạn (cùng thuật toán storyboard)."""
+    segs = [{"segment_key": t.segment_key, "paragraph_idx": t.paragraph_idx, "text": t.text, "start": t.start, "end": t.end}
+            for t in session.scalars(select(TTSSegment).where(TTSSegment.script_version_id == sv.id).order_by(TTSSegment.idx))]
+    if not segs:
+        paras = [x.strip() for x in sv.spoken_script.split("\n\n") if x.strip()]
+        return [{"paragraph_idx": i, "text": t} for i, t in enumerate(paras)], {i: 1 for i in range(len(paras))}
+    texts: dict[int, list[str]] = {}
+    for g in segs:
+        texts.setdefault(g["paragraph_idx"], []).append(g["text"])
+    para_of = {g["segment_key"]: g["paragraph_idx"] for g in segs}
+    scenes_per: dict[int, int] = {}
+    for sc in storyboard.group_segments(segs, sv.actual_audio_seconds or segs[-1]["end"]):
+        pi = para_of[sc.segment_keys[0]]
+        scenes_per[pi] = scenes_per.get(pi, 0) + 1
+    return [{"paragraph_idx": k, "text": " ".join(v)} for k, v in sorted(texts.items())], scenes_per
+
+
 def media_job(session: Session, story: Story, p: Providers) -> dict:
+    """Hình cho TỪNG ĐOẠN: tìm ảnh hợp quyền trên mạng trước; không có mới gọi Gemini; cuối cùng là đồ họa nội bộ."""
+    from ..services.media.generators import is_sensitive
+    from ..services.media.sourcing import ParagraphSourcer, spread
+    from ..services.media.visual_plan import plan_visuals
+
+    s = get_settings()
     news = story.news_item
     models = news.model_names or []
-    q = " ".join(models + ["xe điện", "electric car", "trạm sạc", "charging"])
+    sv = current_script(session, story)
     adir = story_dir(story) / "assets"
-    approved, rejected = 0, 0
-    for finder in p.get_finders():
-        try:
-            found = finder.search(q)
-        except RetryableError:
-            raise
-        for fa in found:
-            exists = session.scalar(select(Asset).where(Asset.story_id == story.id, Asset.source_url == fa.source_url,
-                                                        Asset.local_path == fa.local_path))
-            if exists:
-                continue
-            dec = evaluate(fa.__dict__, story_models=models)
-            a = Asset(story_id=story.id, provider=fa.provider, source_url=fa.source_url, creator=fa.creator,
-                      model_name=fa.model_name, year=fa.year, scene_description=fa.scene_description,
-                      review_status=dec.status, rejection_reason=None if dec.status == "approved" else dec.reason,
-                      is_ai_generated=fa.is_ai_generated, is_illustration=dec.is_illustration, is_demo=fa.is_demo)
-            a.license = AssetLicense(license_name=fa.license_name, license_url=fa.license_url,
-                                     allowed_commercial=fa.allowed_commercial, attribution_required=fa.attribution_required,
-                                     attribution_text=fa.attribution_text, permission_proof=fa.permission_proof)
-            if dec.status == "approved":
-                path = download(fa, adir)  # CHỈ tải sau khi gate cho phép
-                a.local_path, a.content_hash, a.downloaded_at = str(path), file_sha256(path), now()
-                approved += 1
-            else:
-                rejected += 1
-            session.add(a)
-            audit(session, "system", f"asset.{dec.status}", "asset", None, reason=dec.reason, provider=fa.provider)
+    sourcer = ParagraphSourcer(session, story, sv, p.get_finders(), p.get_image_generator(), adir, models)
+    # ảnh dùng chung của thư viện chủ kênh (story-level, như trước)
+    lib_q = " ".join(models + ["xe điện", "electric car", "trạm sạc", "charging"])
+    lib_ok, lib_bad = sourcer.library_pass(lib_q)
+    paragraphs, scenes_per = script_paragraphs(session, sv)
+    try:
+        writer = p.get_writer()
+    except Exception:  # noqa: BLE001 — thiếu key Claude thì vẫn lập kế hoạch bằng heuristic
+        writer = None
+    plan, usage = plan_visuals(paragraphs, models, writer=writer, pillar=story.pillar)
+    record_cost(session, story, "MediaJob", usage, is_demo=story.is_demo)
+    plan_by = {x.paragraph_idx: x for x in plan}
+    text_by = {x["paragraph_idx"]: x["text"] for x in paragraphs}
+    # Lượt 1: tìm ảnh hợp quyền trên mạng cho MỌI đoạn
+    reps = {}
+    for para in paragraphs:
+        n_scenes = scenes_per.get(para["paragraph_idx"], 1)
+        need = max(0, s.media_images_per_paragraph) + (1 if n_scenes >= 4 else 0)
+        reps[para["paragraph_idx"]] = sourcer.search_web(para["text"], plan_by[para["paragraph_idx"]], need)
+        session.flush()
+    # Lượt 2: chỉ đoạn KHÔNG có ảnh mới gọi Gemini; thiếu ngân sách → chia đều trên toàn video
+    missing = [k for k, r in reps.items() if r.found == 0 and r.source != "skipped" and r.need > 0]
+    eligible = [k for k in missing if not is_sensitive(text_by[k])]
+    chosen = set(spread(eligible, sourcer.ai_remaining()))
+    for k in missing:
+        if k in chosen:
+            sourcer.generate_ai(text_by[k], plan_by[k], reps[k])
+        else:
+            reps[k].note = sourcer.ai_skip_reason(text_by[k]) or \
+                f"Không tìm được ảnh hợp quyền; trần {sourcer.ai_budget} ảnh AI/video đã chia cho đoạn khác → đồ họa nội bộ"
+        session.flush()
+    reports = [r.__dict__ | {"planner": plan_by[k].planner} for k, r in reps.items()]
     session.flush()
-    return {"approved": approved, "rejected": rejected, "fallback_internal_graphics": approved == 0}
+    by_src: dict[str, int] = {}
+    for r in reports:
+        by_src[r["source"]] = by_src.get(r["source"], 0) + 1
+    approved = session.scalar(select(func.count(Asset.id)).where(Asset.story_id == story.id, Asset.review_status == "approved"))
+    rejected = session.scalar(select(func.count(Asset.id)).where(Asset.story_id == story.id, Asset.review_status == "rejected"))
+    return {"approved": approved, "rejected": rejected, "library": {"approved": lib_ok, "rejected": lib_bad},
+            "paragraphs": len(paragraphs), "paragraph_sources": by_src, "ai_images": sourcer.ai_used,
+            "warnings": sourcer.warnings, "paragraph_reports": reports, "fallback_internal_graphics": approved == 0}
 
 
 # ------------------------------------------------------------------ 7. storyboard
@@ -295,21 +330,31 @@ def storyboard_job(session: Session, story: Story, p: Providers) -> dict:
     total = sv.actual_audio_seconds
     news = story.news_item
     claims = {c.claim_key: c for c in story_claims(session, story) if c.status == "verified"}
-    photos = [{"id": a.id, "path": a.local_path, "caption": a.scene_description, "illustration": a.is_illustration,
-               "credit": a.license.attribution_text if a.license else None}
-              for a in session.scalars(select(Asset).where(Asset.story_id == story.id, Asset.review_status == "approved",
-                                                           Asset.media_type == "image"))]
+    all_photos = [{"id": a.id, "path": a.local_path, "caption": a.scene_description, "illustration": a.is_illustration,
+                   "credit": a.license.attribution_text if a.license else None, "ai": a.is_ai_generated,
+                   "paragraph_idx": a.paragraph_idx, "provider": a.provider}
+                  for a in session.scalars(select(Asset).where(Asset.story_id == story.id, Asset.review_status == "approved",
+                                                               Asset.media_type == "image", Asset.local_path.is_not(None))
+                                           .order_by(Asset.created_at))
+                  if a.paragraph_idx is None or a.script_version_id == sv.id]
+    photos = [x for x in all_photos if x["paragraph_idx"] is None]  # ảnh dùng chung, luân phiên như trước
+    para_photos: dict[int, list[dict]] = {}
+    for x in all_photos:
+        if x["paragraph_idx"] is not None:
+            para_photos.setdefault(x["paragraph_idx"], []).append(x)
+    para_of = {g["segment_key"]: g["paragraph_idx"] for g in segs}
     title = sv.content["title_options"][sv.content["selected_title_index"]]["title"]
     scenes = storyboard.group_segments(segs, total)
     scenes = storyboard.assign_visuals(scenes, claim_map=sv.content["editorial_claim_map"],
                                        claims={k: {"text": c.text} for k, c in claims.items()}, title=title,
                                        photo_assets=photos, has_timeline=bool(news.effective_to or news.effective_from),
-                                       pillar=story.pillar)
+                                       pillar=story.pillar, paragraph_photos=para_photos,
+                                       scene_paragraph={sc.idx: para_of[sc.segment_keys[0]] for sc in scenes})
     for old in session.scalars(select(Scene).where(Scene.story_id == story.id, Scene.script_version_id == sv.id)):
         session.delete(old)
     gdir = story_dir(story) / f"scenes_v{sv.version}"
     demo = story.is_demo
-    by_id = {x["id"]: x for x in photos}
+    by_id = {x["id"]: x for x in all_photos}
     src_by_id = {x["source_id"]: x for x in (news.supporting_sources or [])}
     for sc in scenes:
         path = gdir / f"scene_{sc.idx:03d}.png"
@@ -340,15 +385,21 @@ def storyboard_job(session: Session, story: Story, p: Providers) -> dict:
             graphics.question_card(path, sc.payload["caption"], demo)
         elif vt == "photo":
             a = by_id[sc.asset_ids[0]]
-            graphics.photo_card(path, Path(a["path"]), sc.payload["caption"], a["credit"], a["illustration"], demo)
+            graphics.photo_card(path, Path(a["path"]), sc.payload["caption"], a["credit"], a["illustration"], demo,
+                                ai_generated=a["ai"])
+            sc.payload.update(asset_provider=a["provider"], ai_generated=a["ai"])
         elif vt == "credits":
             srcs = [f"{x.get('publisher')} — {x['url']}" for x in (news.supporting_sources or [])]
-            graphics.credits_card(path, srcs, [x["credit"] for x in photos if x["credit"]], demo)
+            used = {i for x in scenes for i in x.asset_ids}
+            credits = list(dict.fromkeys(x["credit"] for x in all_photos if x["credit"] and x["id"] in used))
+            graphics.credits_card(path, srcs, credits, demo)
         else:
             graphics.narration_card(path, sc.payload["caption"], demo)
         session.add(Scene(story_id=story.id, script_version_id=sv.id, idx=sc.idx, start_seconds=sc.start, end_seconds=sc.end,
                           narration_segment_ids=sc.segment_keys, visual_type=vt, asset_ids=sc.asset_ids,
-                          claim_ids=sc.claim_ids, payload=sc.payload | {"internal_graphic": vt != "photo"}, image_path=str(path)))
+                          claim_ids=sc.claim_ids, payload=sc.payload | {"internal_graphic": vt != "photo",
+                                                                        "paragraph_idx": para_of[sc.segment_keys[0]]},
+                          image_path=str(path)))
     session.flush()
     types = {}
     for sc in scenes:
@@ -397,11 +448,18 @@ def seo_job(session: Session, story: Story, p: Providers) -> dict:
     news = story.news_item
     content = sv.content
     title = content["title_options"][content["selected_title_index"]]["title"]
-    photos = list(session.scalars(select(Asset).where(Asset.story_id == story.id, Asset.review_status == "approved")))
-    photo = Path(photos[0].local_path) if photos else None
+    used_ids = {i for sc in session.scalars(select(Scene).where(Scene.story_id == story.id, Scene.script_version_id == sv.id))
+                for i in sc.asset_ids}
+    approved = list(session.scalars(select(Asset).where(Asset.story_id == story.id, Asset.review_status == "approved")
+                                    .order_by(Asset.created_at)))
+    photos = [a for a in approved if a.id in used_ids] or [a for a in approved if a.paragraph_idx is None]
+    # thumbnail: ưu tiên ảnh thật đúng chủ đề; KHÔNG dùng ảnh AI làm thumbnail (đặc tả: mẫu xe đúng thực tế)
+    thumb = sorted((a for a in photos if not a.is_ai_generated and a.local_path), key=lambda a: a.is_illustration)
+    photo = Path(thumb[0].local_path) if thumb else None
+    illu = bool(thumb and thumb[0].is_illustration)
     d = Path(r.path).parent
-    t1 = thumbnail.make_thumbnail(d / "thumbnail_A.jpg", title, photo, "A", story.is_demo, bool(photos and photos[0].is_illustration))
-    t2 = thumbnail.make_thumbnail(d / "thumbnail_B.jpg", title, photo, "B", story.is_demo, bool(photos and photos[0].is_illustration))
+    t1 = thumbnail.make_thumbnail(d / "thumbnail_A.jpg", title, photo, "A", story.is_demo, illu)
+    t2 = thumbnail.make_thumbnail(d / "thumbnail_B.jpg", title, photo, "B", story.is_demo, illu)
     r.thumbnail_paths = [str(t1), str(t2)]
     # chương theo đoạn văn
     paras = {}
@@ -410,7 +468,7 @@ def seo_job(session: Session, story: Story, p: Providers) -> dict:
     marks = [(start, storyboard.chapter_title(txt)) for _, (start, txt) in sorted(paras.items()) if start > 0]
     chapters = seo.chapters_from_scenes([], marks)
     sources = [x for x in (news.supporting_sources or [])]
-    credits = [a.license.attribution_text for a in photos if a.license and a.license.attribution_text]
+    credits = list(dict.fromkeys(a.license.attribution_text for a in photos if a.license and a.license.attribution_text))
     idem_tag = "evcs-" + input_hash(story.id, r.sha256)[:12]
     desc = seo.build_description(main_angle=content["main_angle"], summary_line=content["title_options"][0]["title"],
                                  chapters=chapters, sources=sources, asset_credits=credits,
@@ -455,6 +513,13 @@ def qa_job(session: Session, story: Story, p: Providers) -> dict:
 
 
 # ------------------------------------------------------------------ 11. upload private
+
+def uses_ai_images(session: Session, story: Story) -> bool:
+    ids = {i for sc in session.scalars(select(Scene).where(Scene.story_id == story.id,
+                                                           Scene.script_version_id == story.current_script_version_id))
+           for i in sc.asset_ids}
+    return bool(ids) and bool(session.scalar(select(func.count(Asset.id)).where(Asset.id.in_(ids), Asset.is_ai_generated.is_(True))))
+
 
 def upload_gate(session: Session, story: Story) -> list[str]:
     """Gate backend chặn MỌI đường đi vào upload. Trả danh sách lý do (rỗng = được phép)."""
@@ -545,7 +610,8 @@ def upload_private_job(session: Session, story: Story, p: Providers) -> dict:
             body = build_insert_body(title=v.selected_title, description=v.description, tags=v.tags,
                                      category_id=s.youtube_category_id,
                                      made_for_kids_confirmed_false=s.youtube_made_for_kids_confirmed_false,
-                                     contains_synthetic_media=s.youtube_contains_synthetic_media)
+                                     # có ảnh AI trong video → luôn khai báo nội dung tổng hợp, bất kể cấu hình
+                                     contains_synthetic_media=s.youtube_contains_synthetic_media or uses_ai_images(session, story))
             up.status = "uploading"
             session.commit()
             vid = client.insert_video(body, Path(r.path))

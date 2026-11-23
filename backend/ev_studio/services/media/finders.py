@@ -1,8 +1,13 @@
-"""AssetFinder: thư viện chủ kênh, Pexels API, Wikimedia Commons. KHÔNG tải ảnh từ Google/web search."""
+"""AssetFinder: thư viện chủ kênh, Openverse (tìm ảnh giấy phép mở trên toàn web), Wikimedia Commons, Pexels, Pixabay.
+
+Chỉ dùng nguồn trả kèm giấy phép máy đọc được. Ảnh từ Google/web search không có giấy phép → chỉ là URL tham chiếu,
+KHÔNG tải. Mọi kết quả đi qua license gate trước khi tải."""
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import re
 import shutil
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -11,7 +16,7 @@ from typing import Protocol
 
 import httpx
 
-from ...errors import RetryableError
+from ...errors import PermanentError, RetryableError
 
 log = logging.getLogger(__name__)
 IMG_EXT = {".jpg", ".jpeg", ".png", ".webp"}
@@ -75,6 +80,7 @@ class OwnLibraryFinder:
                 scene_description=desc, local_path=str(f), model_name=meta.get("model_name"), year=meta.get("year"),
                 is_ai_generated=meta.get("is_ai_generated", False), is_illustration=meta.get("is_illustration", False),
                 is_demo=meta.get("is_demo", False),
+                extra={"generic": bool(meta.get("generic", False)), "text": " ".join([desc, *meta.get("tags", [])])},
             ))
             if len(out) >= limit:
                 break
@@ -107,6 +113,7 @@ class PexelsFinder:
                 attribution_required=False, attribution_text=f"Ảnh: {p.get('photographer')} / Pexels",
                 permission_proof=json.dumps({"api": "pexels/v1/search", "photo_id": p.get("id"), "url": p.get("url")}),
                 scene_description=p.get("alt") or query, download_url=(p.get("src") or {}).get("large2x"),
+                extra={"text": p.get("alt") or ""},
             ))
         return out
 
@@ -145,13 +152,132 @@ class WikimediaFinder:
                 permission_proof=json.dumps({"api": "commons extmetadata", "license": lic, "usage_terms": g("UsageTerms")}),
                 scene_description=_strip(g("ImageDescription") or p.get("title", "")),
                 download_url=ii.get("thumburl") or ii.get("url"),
+                extra={"text": f"{p.get('title', '')} {_strip(g('ImageDescription') or '')}"},
             ))
         return out
 
 
-def _strip(s: str) -> str:
-    import re
+class OpenverseFinder:
+    """Openverse (api.openverse.org): công cụ tìm ảnh giấy phép mở trên TOÀN WEB (Flickr, Wikimedia, bảo tàng…).
+    Chỉ lấy ảnh cho phép thương mại + chỉnh sửa (license_type=commercial,modification); mỗi kết quả kèm license,
+    license_url và chuỗi ghi công do Openverse cung cấp. Gate vẫn kiểm lại từng ảnh."""
+    name = "openverse"
+    API = "https://api.openverse.org/v1"
+    MIN_WIDTH = 800
 
+    def __init__(self, user_agent: str, client: httpx.Client | None = None, client_id: str | None = None,
+                 client_secret: str | None = None):
+        self.client = client or httpx.Client(timeout=20, headers={"User-Agent": user_agent})
+        self.client_id, self.client_secret = client_id, client_secret
+        self._token: str | None = None
+
+    def _auth(self) -> dict:
+        if not (self.client_id and self.client_secret):
+            return {}
+        if self._token is None:
+            try:
+                r = self.client.post(f"{self.API}/auth_tokens/token/", data={
+                    "grant_type": "client_credentials", "client_id": self.client_id, "client_secret": self.client_secret})
+                self._token = r.json().get("access_token", "") if r.status_code == 200 else ""
+            except (httpx.HTTPError, ValueError):
+                self._token = ""
+        return {"Authorization": f"Bearer {self._token}"} if self._token else {}
+
+    def search(self, query: str, limit: int = 5) -> list[FoundAsset]:
+        params = {"q": query, "license_type": "commercial,modification", "page_size": max(limit * 2, 10), "mature": "false"}
+        try:
+            r = self.client.get(f"{self.API}/images/", params=params, headers=self._auth())
+        except httpx.HTTPError as e:
+            raise RetryableError(f"Openverse lỗi mạng: {type(e).__name__}") from e
+        if r.status_code == 429 or r.status_code >= 500:
+            raise RetryableError(f"Openverse {r.status_code}")
+        if r.status_code != 200:
+            log.warning("Openverse trả %s", r.status_code)
+            return []
+        out = []
+        for p in r.json().get("results", []):
+            if (p.get("width") or 0) and p["width"] < self.MIN_WIDTH:
+                continue
+            lic = openverse_license_name(p.get("license"), p.get("license_version"))
+            title = _strip(p.get("title") or "")
+            tags = " ".join(t.get("name", "") for t in (p.get("tags") or []) if isinstance(t, dict))
+            out.append(FoundAsset(
+                provider="openverse", source_url=p.get("foreign_landing_url"), creator=p.get("creator"),
+                license_name=lic, license_url=p.get("license_url"), allowed_commercial=True,
+                attribution_required=(p.get("license") or "").lower() not in ("cc0", "pdm"),
+                attribution_text=_strip(p.get("attribution") or "") or (
+                    f"{title or 'Ảnh'} — {p.get('creator') or 'không rõ tác giả'} — {lic} — {p.get('foreign_landing_url')}"),
+                permission_proof=json.dumps({"api": "openverse/v1/images", "id": p.get("id"), "license": p.get("license"),
+                                             "license_version": p.get("license_version"), "license_url": p.get("license_url"),
+                                             "source": p.get("source"), "landing": p.get("foreign_landing_url")}),
+                scene_description=title or query, download_url=p.get("url"),
+                extra={"text": f"{title} {tags}", "source": p.get("source")},
+            ))
+            if len(out) >= limit:
+                break
+        return out
+
+
+def openverse_license_name(code: str | None, version: str | None) -> str | None:
+    c = (code or "").lower()
+    v = (version or "").strip()
+    if c == "cc0":
+        return "CC0 1.0"
+    if c == "pdm":
+        return "PDM"
+    if c.startswith("by"):
+        return f"CC {c.upper()} {v}".strip()
+    return code  # NC/ND… → gate loại
+
+
+class PixabayFinder:
+    name = "pixabay"
+
+    def __init__(self, api_key: str, client: httpx.Client | None = None):
+        self.key = api_key
+        self.client = client or httpx.Client(timeout=20)
+
+    def search(self, query: str, limit: int = 5) -> list[FoundAsset]:
+        try:
+            r = self.client.get("https://pixabay.com/api/", params={
+                "key": self.key, "q": query[:100], "image_type": "photo", "orientation": "horizontal", "safesearch": "true",
+                "per_page": max(3, min(limit, 200))})
+        except httpx.HTTPError as e:
+            raise RetryableError(f"Pixabay lỗi mạng: {type(e).__name__}") from e
+        if r.status_code == 429 or r.status_code >= 500:
+            raise RetryableError(f"Pixabay {r.status_code}")
+        if r.status_code != 200:
+            log.warning("Pixabay trả %s", r.status_code)
+            return []
+        out = []
+        for p in r.json().get("hits", [])[:limit]:
+            out.append(FoundAsset(
+                provider="pixabay", source_url=p.get("pageURL"), creator=p.get("user"),
+                license_name="Pixabay Content License", license_url="https://pixabay.com/service/license-summary/",
+                allowed_commercial=True, attribution_required=False, attribution_text=f"Ảnh: {p.get('user')} / Pixabay",
+                permission_proof=json.dumps({"api": "pixabay/api", "id": p.get("id"), "url": p.get("pageURL")}),
+                scene_description=p.get("tags") or query, download_url=p.get("largeImageURL"),
+                extra={"text": p.get("tags") or ""},
+            ))
+        return out
+
+
+_MODEL_RE = re.compile(r"\b(VF|EC)\s?-?(\d{1,2}|e\d{2})\b", re.I)
+
+
+def detect_model(text: str | None) -> str | None:
+    """Đọc tên mẫu xe VinFast trong tiêu đề/tag ảnh ("VinFast VF8" → "VF 8"). Không đoán khi không có chữ."""
+    m = _MODEL_RE.search(text or "")
+    if not m:
+        return None
+    return f"{m.group(1).upper()} {m.group(2).lower()}"
+
+
+def norm_model(name: str | None) -> str:
+    return re.sub(r"[\s\-]", "", (name or "").lower())
+
+
+def _strip(s: str) -> str:
     return re.sub(r"<[^>]+>", "", s).strip()
 
 
@@ -172,10 +298,33 @@ def download(asset: FoundAsset, dest_dir: Path, client: httpx.Client | None = No
         r.raise_for_status()
     except httpx.HTTPError as e:
         raise RetryableError(f"Tải asset lỗi: {type(e).__name__}") from e
-    ext = ".jpg" if "jpeg" in r.headers.get("content-type", "jpg") else ".png"
-    dst = dest_dir / f"{asset.provider}_{abs(hash(asset.download_url)) % 10**10}{ext}"
-    dst.write_bytes(r.content)
+    if len(r.content) > MAX_DOWNLOAD_BYTES:
+        raise PermanentError(f"Asset quá lớn ({len(r.content) // 1_000_000} MB)")
+    ext = _image_ext(r.content)
+    if ext is None:
+        raise PermanentError("Nội dung tải về không phải ảnh hợp lệ")
+    dst = dest_dir / f"{asset.provider}_{hashlib.sha1(asset.download_url.encode()).hexdigest()[:12]}{ext}"
+    tmp = dst.with_suffix(dst.suffix + ".part")
+    tmp.write_bytes(r.content)
+    tmp.replace(dst)
     return dst
+
+
+MAX_DOWNLOAD_BYTES = 40_000_000
+
+
+def _image_ext(data: bytes) -> str | None:
+    from io import BytesIO
+
+    from PIL import Image
+
+    try:
+        with Image.open(BytesIO(data)) as im:
+            im.verify()
+            fmt = (im.format or "").upper()
+    except Exception:
+        return None
+    return {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp"}.get(fmt)
 
 
 def now_utc() -> datetime:

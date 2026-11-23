@@ -9,8 +9,10 @@ ALLOWED_LICENSES = {
     "cc0", "cc0 1.0", "public domain", "pd", "pdm", "pexels license",
     "cc by 2.0", "cc by 2.5", "cc by 3.0", "cc by 4.0",
     "cc by-sa 2.0", "cc by-sa 2.5", "cc by-sa 3.0", "cc by-sa 4.0",
-    "owner-provided", "licensed", "internal graphic",
+    "owner-provided", "licensed", "internal graphic", "pixabay content license",
 }
+AI_LICENSE = "ai-generated"
+AI_PROVIDERS = {"gemini", "demo_ai"}
 NEEDS_PROOF = {"owner-provided", "licensed"}
 FORBIDDEN_MARKERS = ("nc", "nd", "noncommercial", "no derivatives", "all rights reserved", "editorial", "fair use", "unknown")
 
@@ -37,6 +39,17 @@ def evaluate(asset: dict, story_models: list[str] | None = None) -> GateDecision
     lic = (asset.get("license_name") or "").strip().lower()
     if not lic:
         return GateDecision("rejected", "Thiếu thông tin giấy phép")
+    if lic == AI_LICENSE:
+        # Ảnh AI: chỉ hợp lệ khi do bộ tạo ảnh của hệ thống sinh ra, có bằng chứng (model, prompt, thời điểm).
+        # LUÔN dán nhãn minh họa — không bao giờ được trình bày như ảnh thật của mẫu xe/sự kiện.
+        if provider not in AI_PROVIDERS or not asset.get("is_ai_generated"):
+            return GateDecision("rejected", "Ảnh gắn nhãn AI nhưng không do bộ tạo ảnh của hệ thống sinh ra")
+        if not (asset.get("permission_proof") or "").strip():
+            return GateDecision("rejected", "Ảnh AI thiếu bằng chứng tạo ảnh (model/prompt/thời điểm)")
+        return GateDecision("approved", "Ảnh tạo bằng AI (dán nhãn minh họa)", True)
+    if provider in AI_PROVIDERS or asset.get("is_ai_generated"):
+        if provider not in ("own_library",):
+            return GateDecision("rejected", "Ảnh AI phải có giấy phép 'AI-generated' và bằng chứng tạo ảnh")
     tokens = lic.replace("-", " ").split()
     if any(m in lic for m in FORBIDDEN_MARKERS[2:]) or "nc" in tokens or "nd" in tokens:
         return GateDecision("rejected", f"Giấy phép '{asset.get('license_name')}' không cho phép dùng thương mại/chỉnh sửa")

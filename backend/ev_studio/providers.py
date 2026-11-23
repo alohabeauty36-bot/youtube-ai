@@ -56,16 +56,40 @@ def get_telegram(settings: Settings | None = None):
 
 
 def get_asset_finders(settings: Settings | None = None) -> list:
-    from .services.media.finders import OwnLibraryFinder, PexelsFinder, WikimediaFinder
+    """Thứ tự = độ ưu tiên: thư viện chủ kênh → Openverse (toàn web) → Wikimedia → Pexels → Pixabay.
+    DEMO không gọi mạng: chỉ thư viện chủ kênh."""
+    from .services.media.finders import OpenverseFinder, OwnLibraryFinder, PexelsFinder, PixabayFinder, WikimediaFinder
 
     s = settings or get_settings()
     finders: list = [OwnLibraryFinder(s.media_library_dir)]
     if not s.is_demo:
-        if s.pexels_api_key:
-            finders.append(PexelsFinder(s.pexels_api_key.get_secret_value()))
+        if s.openverse_enabled:
+            finders.append(OpenverseFinder(s.wikimedia_user_agent, client_id=s.openverse_client_id,
+                                           client_secret=s.openverse_client_secret.get_secret_value() if s.openverse_client_secret else None))
         if s.wikimedia_enabled:
             finders.append(WikimediaFinder(s.wikimedia_user_agent))
+        if s.pexels_api_key:
+            finders.append(PexelsFinder(s.pexels_api_key.get_secret_value()))
+        if s.pixabay_api_key:
+            finders.append(PixabayFinder(s.pixabay_api_key.get_secret_value()))
     return finders
+
+
+def get_image_generator(settings: Settings | None = None):
+    """Bộ tạo ảnh AI dự phòng (chỉ dùng khi không tìm được ảnh hợp quyền). Tuỳ chọn: thiếu key → None
+    (cảnh dùng đồ họa nội bộ), KHÔNG chặn pipeline."""
+    from .services.media.generators import DemoImageGenerator, GeminiImageGenerator
+
+    s = settings or get_settings()
+    choice = s.image_gen_provider
+    _forbid_demo_in_prod(s, "tạo ảnh AI", choice)
+    if choice == "off":
+        return None
+    if choice == "demo" or s.is_demo:  # DEMO không bao giờ gọi Gemini thật
+        return DemoImageGenerator()
+    if not s.gemini_api_key:
+        return None
+    return GeminiImageGenerator(s.gemini_api_key.get_secret_value(), s.gemini_image_model, s.gemini_price_per_image_usd)
 
 
 @dataclass
@@ -76,6 +100,7 @@ class Providers:
     youtube: Any = None  # client cụ thể; None → tạo theo channel
     telegram: Any = None
     finders: list | None = None
+    image_generator: Any = None  # None → theo cấu hình; False → tắt hẳn (test)
     extra: dict = field(default_factory=dict)
 
     def get_writer(self):
@@ -92,6 +117,11 @@ class Providers:
         if self.telegram is None:
             self.telegram = get_telegram()
         return self.telegram
+
+    def get_image_generator(self):
+        if self.image_generator is None:
+            self.image_generator = get_image_generator() or False
+        return self.image_generator or None
 
     def get_finders(self):
         if self.finders is None:

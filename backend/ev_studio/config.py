@@ -57,6 +57,19 @@ class Settings(BaseSettings):
     pexels_api_key: SecretStr | None = None
     wikimedia_enabled: bool = True
     wikimedia_user_agent: str = "EVCreatorStudio/1.0 (contact: owner@example.invalid)"
+    openverse_enabled: bool = True  # công cụ tìm ảnh giấy phép mở trên toàn web (Flickr, Wikimedia, bảo tàng…)
+    openverse_client_id: str | None = None  # tuỳ chọn: tăng hạn mức gọi API
+    openverse_client_secret: SecretStr | None = None
+    pixabay_api_key: SecretStr | None = None
+    media_images_per_paragraph: int = 1  # số ảnh tối đa cho mỗi đoạn lời đọc (đoạn dài được thêm 1 ảnh)
+    media_queries_per_paragraph: int = 3
+
+    # --- tạo ảnh AI (CHỈ dùng khi không tìm được ảnh hợp quyền trên mạng) ---
+    image_gen_provider: Literal["auto", "off", "demo", "gemini"] = "auto"
+    gemini_api_key: SecretStr | None = None
+    gemini_image_model: str = "gemini-3.1-flash-image"
+    gemini_max_images_per_video: int = 12
+    gemini_price_per_image_usd: float = 0.04  # ước tính; chỉnh theo bảng giá hiện hành
 
     # --- YouTube ---
     youtube_provider: Literal["auto", "demo", "google"] = "auto"

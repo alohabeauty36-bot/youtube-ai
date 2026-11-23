@@ -159,7 +159,8 @@ def narration_card(path: Path, text: str, demo: bool = False, kicker: str = "") 
     return _save(img, path)
 
 
-def photo_card(path: Path, photo: Path, caption: str, credit: str | None, illustration: bool, demo: bool = False) -> Path:
+def photo_card(path: Path, photo: Path, caption: str, credit: str | None, illustration: bool, demo: bool = False,
+               ai_generated: bool = False) -> Path:
     src = Image.open(photo).convert("RGB")
     bg = ImageOps.fit(src, (W, H)).filter(ImageFilter.GaussianBlur(30))
     fg = ImageOps.contain(src, (W - 200, H - 260))
@@ -168,9 +169,18 @@ def photo_card(path: Path, photo: Path, caption: str, credit: str | None, illust
     d = ImageDraw.Draw(img)
     d.rectangle([0, H - 170, W, H], fill=(0, 0, 0))
     _paragraph(d, caption, font(44, True), 90, H - 150, W - 200, max_lines=1)
-    tag = " · ".join(x for x in [("Ảnh minh họa" if illustration else None), credit] if x)
+    label = "Ảnh minh họa tạo bằng AI" if ai_generated else ("Ảnh minh họa" if illustration else None)
+    if label and credit and credit.startswith(label):
+        label = None  # tránh lặp chữ khi phần ghi công đã nêu
+    tag = " · ".join(x for x in [label, credit] if x)
     if tag:
         d.text((90, H - 80), tag, font=font(28), fill=MUTED)
+    if ai_generated:  # nhãn luôn thấy rõ trên khung hình: ảnh AI không phải ảnh thật
+        f = font(28, True)
+        txt = "MINH HỌA AI"
+        tw = d.textlength(txt, font=f)
+        d.rounded_rectangle([50, 40, 50 + tw + 40, 92], 10, fill=WARN)
+        d.text((70, 48), txt, font=f, fill=(20, 20, 20))
     if demo:
         d.rounded_rectangle([W - 470, 40, W - 50, 92], 10, fill=RED)
         d.text((W - 450, 48), "DEMO — DỮ LIỆU GIẢ LẬP", font=font(28, True), fill=FG)

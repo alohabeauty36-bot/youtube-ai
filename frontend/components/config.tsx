@@ -7,7 +7,7 @@ type Field = { key: string; label: string; group: string; kind: string; options:
   restart: boolean; source: string; value?: any; is_set?: boolean; masked?: string | null };
 type Cfg = { groups: Record<string, string>; fields: Field[]; oauth_redirect_uri: string; local_access?: boolean };
 
-const TEST_FOR: Record<string, string> = { anthropic: "anthropic", tts: "tts", youtube: "youtube", telegram: "telegram", media: "pexels" };
+const TEST_FOR: Record<string, string> = { anthropic: "anthropic", tts: "tts", youtube: "youtube", telegram: "telegram", media: "media", imagegen: "gemini" };
 const SOURCE: Record<string, [string, any]> = { ui: ["đã lưu trong giao diện", "ok"], env: ["từ file .env", "info"], default: ["mặc định", "info"] };
 
 export function ConfigPanel() {
@@ -94,6 +94,10 @@ function TestResult({ g, r, onPick, onSend, current }: { g: string; r: any; onPi
           <button onClick={() => onPick("telegram_allowed_chat_ids", [current, c.chat_id].filter(Boolean).join(","))}>Cho phép</button></div>)}</div>}
       {g === "telegram" && r.ok && <div style={{ marginTop: 6 }}><button onClick={onSend}>Gửi tin nhắn thử tới chat được phép</button>
         {r.sent?.map((x: any) => <div key={x.chat_id}>{x.chat_id}: {x.ok ? "đã gửi" : x.error}</div>)}</div>}
+      {g === "imagegen" && r.models?.length > 0 && <div className="row" style={{ marginTop: 6 }}>Chọn model ảnh:
+        {r.models.slice(0, 12).map((m: string) => <button key={m} onClick={() => onPick("gemini_image_model", m)}>{m}</button>)}</div>}
+      {g === "media" && r.sources?.length > 0 && <div style={{ marginTop: 6 }}>{r.sources.map((x: any) =>
+        <div key={x.provider}>{x.ok ? "✅" : "⛔"} {x.provider}: {x.error || `${x.licensed}/${x.found} ảnh hợp quyền`}</div>)}</div>}
       {g === "youtube" && r.registered && <div>Đang đăng ký: {r.registered.join(", ") || "(trống)"}</div>}
     </div>
   );

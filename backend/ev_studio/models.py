@@ -215,7 +215,7 @@ class Asset(TimestampMixin, Base):
     __tablename__ = "assets"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     story_id: Mapped[str | None] = mapped_column(ForeignKey("stories.id"), index=True)
-    provider: Mapped[str] = mapped_column(String(40))  # own_library|pexels|wikimedia|internal_graphic|web_reference
+    provider: Mapped[str] = mapped_column(String(40))  # own_library|openverse|wikimedia|pexels|pixabay|gemini|demo_ai|internal_graphic|web_reference
     source_url: Mapped[str | None] = mapped_column(String(1000))
     creator: Mapped[str | None] = mapped_column(String(300))
     downloaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -230,6 +230,11 @@ class Asset(TimestampMixin, Base):
     is_ai_generated: Mapped[bool] = mapped_column(Boolean, default=False)
     is_illustration: Mapped[bool] = mapped_column(Boolean, default=False)
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Ảnh gắn với một đoạn lời đọc của một phiên bản kịch bản (NULL = ảnh dùng chung cho cả story)
+    script_version_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    paragraph_idx: Mapped[int | None] = mapped_column(Integer)
+    search_query: Mapped[str | None] = mapped_column(String(300))
+    origin_key: Mapped[str | None] = mapped_column(String(1000))  # URL nguồn/đường dẫn gốc để chống trùng
     license: Mapped["AssetLicense | None"] = relationship(back_populates="asset", uselist=False, cascade="all, delete-orphan")
 
 
