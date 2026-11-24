@@ -2,7 +2,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api, fmtDate } from "@/lib/api";
-import { Badge, Card, DemoBanner, ErrorBox, useLoad } from "@/components/ui";
+import { Badge, Card, DemoBanner, ErrorBox, ScanResult, useLoad } from "@/components/ui";
 
 const STATUS_KIND: Record<string, any> = { shortlist: "ok", research: "warn", reference: "info", blocked: "bad", duplicate: "info", dismissed: "info" };
 
@@ -11,6 +11,11 @@ export default function News() {
   const q = new URLSearchParams({ ...(pillar && { pillar }), ...(status && { status }) }).toString();
   const { data, error, reload } = useLoad<any[]>(`/api/news${q ? "?" + q : ""}`);
   const [open, setOpen] = useState<string | null>(null); const [err, setErr] = useState<any>(null);
+  const [scan, setScan] = useState<any>(null); const [scanning, setScanning] = useState(false);
+  const runScan = async () => {
+    setErr(null); setScanning(true);
+    try { setScan(await api("/api/sources/scan", { method: "POST" })); reload(); } catch (e) { setErr(e); } finally { setScanning(false); }
+  };
   const router = useRouter();
   const create = async (n: any) => {
     setErr(null);
@@ -30,9 +35,10 @@ export default function News() {
         <select style={{ width: 160 }} value={pillar} onChange={e => setPillar(e.target.value)}><option value="">Mọi trụ cột</option><option>P1</option><option>P2</option><option>P3</option></select>
         <select style={{ width: 180 }} value={status} onChange={e => setStatus(e.target.value)}><option value="">Mọi trạng thái</option>
           {Object.keys(STATUS_KIND).map(s => <option key={s}>{s}</option>)}</select>
-        <button onClick={async () => { try { await api("/api/sources/scan", { method: "POST" }); reload(); } catch (e) { setErr(e); } }}>Quét tin ngay</button>
+        <button disabled={scanning} onClick={runScan}>{scanning ? "Đang quét…" : "Quét tin ngay"}</button>
       </div>
       <ErrorBox error={error || err} />
+      <ScanResult r={scan} />
       {(data || []).map(n => (
         <div key={n.id} className="news-card">
           <div className="row">
@@ -64,7 +70,7 @@ export default function News() {
           </div>}
         </div>
       ))}
-      {!data?.length && <Card><p className="muted">Chưa có tin. Bấm “Quét tin ngay”.</p></Card>}
+      {!data?.length && <Card><p className="muted">Chưa có tin. Bấm “Quét tin ngay”. Nguồn RSS quản lý ở Thiết lập → Nguồn tin.</p></Card>}
     </>
   );
 }

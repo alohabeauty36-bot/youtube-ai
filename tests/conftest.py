@@ -17,6 +17,7 @@ os.environ.update({
     "MEDIA_LIBRARY_DIR": str(TMP / "media"),
     # thời lượng rút gọn để test nhanh; luồng 10 phút thật chạy bằng scripts/smoke_demo.sh
     "DURATION_TARGET_SECONDS": "160", "DURATION_MIN_SECONDS": "120", "DURATION_MAX_SECONDS": "200",
+    "EVCS_ALLOW_SHORT_DURATION": "1",  # chỉ trong test: bỏ sàn 10 phút để chạy nhanh
     "JOB_BACKOFF_BASE_SECONDS": "0",
     "SECRET_KEY": "test-secret-key-0123456789", "TELEGRAM_ALLOWED_CHAT_IDS": "",
 })

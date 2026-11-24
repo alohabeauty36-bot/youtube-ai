@@ -287,10 +287,4 @@ def purge_demo_if_production(actor: str = "system") -> dict | None:
         log.warning("Không xoá được dữ liệu DEMO lúc khởi động: %s", ex, extra={"evcs_source": "config"})
         return None
 
-
-PRODUCTION_SOURCES = [
-    # Đầu mối gợi ý trong đặc tả. Feed URL cần chủ kênh kiểm tra (RSS chính thức nếu có) trước khi bật.
-    {"name": "VinFast — Tin tức", "domain": "vinfastauto.com", "feed_url": None, "trust_tier": 1},
-    {"name": "V-Green — Tin tức", "domain": "vgreen.net", "feed_url": None, "trust_tier": 1},
-    {"name": "V-Green — Chính sách", "domain": "vgreen.net", "feed_url": None, "trust_tier": 1},
-]
+# Nguồn RSS mặc định cho production: xem services/ingest.py (DEFAULT_RSS_SOURCES).

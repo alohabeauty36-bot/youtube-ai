@@ -13,14 +13,19 @@ _scheduler = None
 
 
 def scan_and_autopilot() -> dict:
-    from ..providers import get_writer
-    from ..services.ingest import run_scan
+    from ..services.ingest import run_scan, scan_writer
     from .jobs import autopilot_tick, get_setting
 
     with SessionLocal() as db:
         if not get_setting(db, "scan_schedule_enabled", False):
             return {"ran": False, "reason": "Lịch quét đang tắt"}
-        stats = run_scan(db, writer=get_writer(), actor="scheduler")
+        writer, warn = scan_writer()
+        stats = run_scan(db, writer=writer, actor="scheduler", warnings=[warn] if warn else None)
+        for w in stats.get("warnings", []):
+            log.info("Quét tin theo lịch: %s", w)
+        for r in stats.get("sources", []):
+            if not r["ok"]:
+                log.warning("Quét tin theo lịch — nguồn %s: %s", r["source"], r.get("error"), extra={"evcs_source": "scheduler"})
         db.commit()
         ap = autopilot_tick(db)
         return {"scan": stats, "autopilot": ap}

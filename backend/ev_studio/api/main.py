@@ -223,6 +223,16 @@ def list_sources(db: Session = Depends(get_db), actor: Actor = Depends(current_a
 
 @app.post("/api/sources")
 def add_source(body: SourceIn, db: Session = Depends(get_db), actor: Actor = Depends(require_owner)):
+    from urllib.parse import urlparse
+
+    if body.feed_url:
+        u = urlparse(body.feed_url.strip())
+        if u.scheme not in ("http", "https") or not u.netloc:
+            raise HTTPException(422, "URL feed phải bắt đầu bằng http:// hoặc https://")
+        body.feed_url = body.feed_url.strip()
+        body.domain = body.domain or u.hostname or ""
+    if db.scalar(select(Source.id).where(Source.feed_url == body.feed_url, Source.feed_url.is_not(None))):
+        raise HTTPException(409, "Nguồn RSS này đã có trong danh sách")
     src = Source(**body.model_dump(), kind="rss" if body.feed_url else "manual")
     db.add(src)
     audit(db, actor.name, "source.add", "source", None, domain=body.domain)
@@ -238,6 +248,8 @@ def patch_source(sid: str, body: dict = Body(...), db: Session = Depends(get_db)
     for k in ("allowed", "blocked", "trust_tier", "feed_url", "name"):
         if k in body:
             setattr(src, k, body[k])
+    if "feed_url" in body and src.kind != "fixture":
+        src.kind = "rss" if (src.feed_url or "").strip() else "manual"
     audit(db, actor.name, "source.update", "source", sid, **{k: str(v) for k, v in body.items()})
     db.commit()
     return {"ok": True}
@@ -245,15 +257,15 @@ def patch_source(sid: str, body: dict = Body(...), db: Session = Depends(get_db)
 
 @app.post("/api/sources/scan")
 def scan(db: Session = Depends(get_db), actor: Actor = Depends(current_actor)):
-    from ..providers import get_writer
-    from ..services.ingest import run_scan
+    from ..services.ingest import run_scan, scan_writer
 
     s = get_settings()
     if s.is_demo:
         from ..demo import seed_demo
 
         seed_demo(db)
-    stats = run_scan(db, writer=get_writer(), actor=actor.name)
+    writer, warn = scan_writer()  # thiếu key Claude vẫn quét được tin, chỉ chưa tách claim
+    stats = run_scan(db, writer=writer, actor=actor.name, warnings=[warn] if warn else None)
     db.commit()
     return stats
 

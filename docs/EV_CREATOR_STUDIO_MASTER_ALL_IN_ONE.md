@@ -99,7 +99,7 @@ Xây dựng một ứng dụng web cho chủ kênh YouTube tại Việt Nam. H�
 4. Có **hai chế độ**: `MANUAL` (người dùng chọn chủ đề) và `AUTOPILOT_PRIVATE` (chạy end-to-end đến YouTube private nếu vượt ngưỡng tin cậy). Autopilot **dừng** khi thiếu nguồn, thiếu tư liệu bản quyền, sai thời lượng hoặc QC không đạt.
 5. Thiết kế state machine, audit log, job checkpoints, retries và idempotency. API key/token trong env/secrets, không rò trong log hoặc repo. Không click/điều khiển trình duyệt để thay OAuth upload.
 6. Source và fact-check: mỗi claim quan trọng có URL nguồn + ngày; không bịa giá, chính sách trạm sạc hay luật. Chặn tin không đủ căn cứ. Đọc từ nguồn hợp lệ; không crawl vượt paywall hoặc vượt điều khoản.
-7. `spoken_script` sạch để đưa TTS; xuất ra JSON riêng cho `production_notes`, cảnh và metadata. TTS duration đo bằng file audio thật; điều chỉnh script đến khoảng 570–630s.
+7. `spoken_script` sạch để đưa TTS; xuất ra JSON riêng cho `production_notes`, cảnh và metadata. TTS duration đo bằng file audio thật; điều chỉnh script đến khoảng 600–720s, **không bao giờ dưới 600s (10 phút)**.
 8. `asset_licenses` là dữ liệu bắt buộc. **Không tự lấy ảnh Google** và dùng lên video nếu không có quyền. Có fallback đồ họa nội bộ.
 9. Upload phải đặt `status.privacyStatus='private'` rõ ràng và đọc lại bằng `videos.list`. Trạng thái private và tên kênh phải hiện trong UI trước upload. Không tự đổi privacy dù Telegram gửi nút "Đã duyệt".
 10. Telegram gửi nội dung video, tiêu đề, video ID, trạng thái private, ngày nguồn và link review có bảo vệ. Lỗi Telegram không làm video công khai.
@@ -248,7 +248,7 @@ Mỗi tin lưu: `id`, `title`, `url`, `canonical_url`, `publisher`, `published_a
 - 100% claim quan trọng gắn ít nhất một `source_id`; tất cả số liệu có ngữ cảnh ngày/đơn vị.
 - `originality_check`: không chép dài nội dung nguồn; chỉ tóm tắt và đưa phân tích tự viết.
 - `repetition_check`: không trùng các đoạn/khung hình với video gần đây.
-- `duration_estimate` qua TTS: 570–630 giây mục tiêu, sai số chấp nhận cho MVP ±30 giây.
+- `duration_estimate` qua TTS: tối thiểu 600 giây (cứng, không được dưới 10 phút), mục tiêu 660 giây, tối đa 720 giây.
 - Có 3 lựa chọn tiêu đề; không tự nhận định "VinFast sắp phá sản", "cấm xe xăng", "miễn phí vĩnh viễn" nếu nguồn không hỗ trợ.
 - Không khẳng định cảm giác lái, tiêu thụ điện và khoảng chạy là định lượng phổ quát từ một trải nghiệm cá nhân.
 
@@ -489,7 +489,7 @@ ev_creator_studio/
 1. Nhập file prompt nguồn, tạo ba cấu hình trụ cột; chính xác 3 câu tiêu đề cho một đề xuất và ít nhất 1 title được xác minh không sai nội dung.
 2. Scan 10 URL tin mẫu (gồm 2 URL trùng và 1 tin sai/thiếu nguồn), kết quả đã dedupe, tin thiếu nguồn bị chặn; không tải ảnh có quyền chưa xác minh.
 3. Đọc Claude ResearchPack có ≥ 2 nguồn với tin cần nhiều bên, hiển thị mapping claim -> URL và ngày. Không có đường dẫn bí ẩn không kiểm chứng.
-4. Claude tạo kịch bản, VieNeu-TTS đọc tiếng Việt đủ 570–630s ở mục tiêu mặc định; số từ không phải điều kiện duy nhất. TTS giọng đã chọn xuyên suốt, có thể nghe lại một segment.
+4. Claude tạo kịch bản, VieNeu-TTS đọc tiếng Việt đủ 600–720s (không dưới 10 phút) ở mục tiêu mặc định; số từ không phải điều kiện duy nhất. TTS giọng đã chọn xuyên suốt, có thể nghe lại một segment.
 5. Render 1080p, đầy đủ tiếng/subtitle/cảnh, không dùng hình VF 3 để minh họa VF 8 mà không ghi chú rõ; mỗi cảnh có asset_id hoặc graphic internal.
 6. Render QA pass; metadata có SEO tiêu đề, mô tả nguồn, thumbnail. Có bản preview để kiểm.
 7. Upload bằng OAuth vào channel được chọn, **force private**, `videos.list` xác nhận private, lưu video id, Telegram nhắn link và checklist; người khác không thể công khai từ Telegram.
@@ -579,11 +579,11 @@ Bạn là TỔNG BIÊN TẬP độc lập, ĐẠO DIỄN KỂ CHUYỆN và CHUY�
 - **2:00–4:00:** Phân tích thông tin chính và cái giá/mặt trái; dẫn tình huống hoặc phép tính có nguồn.
 - **4:00–6:30:** Ít nhất một điểm đảo chiều quan điểm hợp lý, đưa hai lập luận ủng hộ/phản đối.
 - **6:30–8:45:** Tác động tới người xem tại Việt Nam, rủi ro và các tình huống khác nhau. Với P3 có kịch bản thuận lợi/trung tính/bất lợi.
-- **8:45–10:00:** Kết luận cân bằng có điều kiện, trả lời câu hỏi đầu, một câu mở dẫn video tiếp theo.
+- **8:45–11:00:** Kết luận cân bằng có điều kiện, trả lời câu hỏi đầu, một câu mở dẫn video tiếp theo.
 
 Các mốc là nhịp biên tập, KHÔNG viết timestamp trong bản lời đọc. Cứ 30–60 giây cần nhịp kéo tự nhiên từ thông tin mới. Khoảng 2–3 phút có một lần đổi cách nhìn nếu nội dung thực sự hỗ trợ. Dùng **3–4 câu hỏi/vòng lặp mở có câu trả lời về sau**, không bỏ quên. Không kéo một luận điểm quá 90 giây khi không có dữ kiện mới.
 
-**Thời lượng:** Nhắm 1.300–1.600 từ tiếng Việt nhưng không coi số từ là mục tiêu cuối. Renderer/TTS sẽ đo thật. Nếu nhận feedback `ACTUAL_AUDIO_SECONDS`, viết lại để đạt 570–630 giây; không tự động kéo tốc độ âm thanh quá mức làm giảm tự nhiên.
+**Thời lượng:** Video **tuyệt đối không được dưới 10 phút** (`MIN_DURATION_SECONDS`, mặc định 600 giây). Nhắm `TARGET_DURATION_SECONDS` (mặc định 660 giây ≈ 1.550–1.700 từ tiếng Việt) để audio đo thật luôn vượt mức tối thiểu; không coi số từ là mục tiêu cuối. Renderer/TTS sẽ đo thật. Nếu nhận feedback `ACTUAL_AUDIO_SECONDS`, viết lại để đạt khoảng `MIN_DURATION_SECONDS`–`MAX_DURATION_SECONDS`, ưu tiên gần `TARGET_DURATION_SECONDS`; khi audio ngắn hơn tối thiểu, bổ sung phân tích, bối cảnh, phản biện có căn cứ trong RESEARCH_PACK, không thêm dữ kiện bịa và không độn câu lặp. Không tự động kéo tốc độ âm thanh quá mức làm giảm tự nhiên.
 
 ### 5. Kiểm tra trước khi trả lời
 
@@ -595,7 +595,9 @@ Tự rà soát: hook có căn cứ; đầu video chưa tiết lộ hết; đoạ
 DATE_NOW: {{current_date_asia_ho_chi_minh}}
 CHANNEL_PROFILE: {{channel_profile}}
 PILLAR: {{P1_or_P2_or_P3}}
-TARGET_DURATION_SECONDS: 600
+TARGET_DURATION_SECONDS: 660
+MIN_DURATION_SECONDS: 600
+MAX_DURATION_SECONDS: 720
 RESEARCH_PACK: {{verified_research_pack_json}}
 PROHIBITED_OR_UNVERIFIED_CLAIMS: {{claims_to_avoid_json}}
 RECENT_CHANNEL_TOPICS: {{recent_video_titles_and_angles_json}}
@@ -619,7 +621,7 @@ Không trộn JSON schema làm lời đọc. Trả về **chính xác** một JS
     {"title": "Tiêu đề nhấn tác động thực tế", "strategy": "practical"}
   ],
   "selected_title_index": 0,
-  "spoken_script": "Một bài luận liền mạch duy nhất, khoảng 10 phút khi đọc; không có chỉ dẫn kỹ thuật hoặc chú thích sân khấu.",
+  "spoken_script": "Một bài luận liền mạch duy nhất, ít nhất 10 phút khi đọc (khoảng 11 phút); không có chỉ dẫn kỹ thuật hoặc chú thích sân khấu.",
   "closing_teaser": "Một câu dẫn sang video tiếp theo (có trong spoken_script).",
   "editorial_claim_map": [
     {"claim_id": "c1", "source_ids": ["s1"], "relevant_script_excerpt": "Câu có claim được hỗ trợ"}

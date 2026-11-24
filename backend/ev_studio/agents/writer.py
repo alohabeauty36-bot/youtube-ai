@@ -118,7 +118,7 @@ class AgentWriter:
         user = render_developer_message(self.bundle, ctx) + "\n\n" + render_user_task(self.bundle, ctx["core_question"])
         pack = ctx.get("research_pack") or {}
         pack_claims = list(pack.get("claims", [])) + list(pack.get("claims_to_avoid", []))
-        target_s = float(ctx.get("target_duration_seconds") or 600)
+        target_s = float(ctx.get("target_duration_seconds") or 660)
         if ctx.get("actual_audio_seconds") and ctx.get("previous_spoken_script"):
             target_words = len(ctx["previous_spoken_script"].split()) * target_s / float(ctx["actual_audio_seconds"])
         else:

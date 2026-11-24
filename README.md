@@ -1,7 +1,7 @@
 # EV Creator Studio
 
 Tòa soạn video AI **có người duyệt cuối** cho kênh YouTube tiếng Việt về VinFast và xe điện (ba trụ cột P1, P2, P3).
-Quy trình: quét tin hợp lệ → gom nguồn, tách claim, xác minh → chấm điểm → Claude viết ResearchPack và kịch bản khoảng 10 phút → VieNeu-TTS đọc (đo thời lượng bằng audio thật) → tư liệu có giấy phép hoặc đồ họa tự dựng → FFmpeg 1080p, phụ đề, thumbnail, SEO → **tải lên YouTube ở chế độ RIÊNG TƯ** → đọc lại để xác nhận private → nhắn Telegram → **chủ kênh tự công khai trên YouTube Studio**.
+Quy trình: quét tin hợp lệ → gom nguồn, tách claim, xác minh → chấm điểm → Claude viết ResearchPack và kịch bản **ít nhất 10 phút** (mục tiêu 11 phút) → VieNeu-TTS đọc (đo thời lượng bằng audio thật) → tư liệu có giấy phép hoặc đồ họa tự dựng → FFmpeg 1080p, phụ đề, thumbnail, SEO → **tải lên YouTube ở chế độ RIÊNG TƯ** → đọc lại để xác nhận private → nhắn Telegram → **chủ kênh tự công khai trên YouTube Studio**.
 
 > 🔒 **Các bất biến không tắt được:** mọi upload dùng `privacyStatus="private"`, bị kiểm tra ba lớp (hàm tạo body, client ngay trước khi gọi API, ràng buộc CHECK trong DB) và được đọc lại bằng `videos.list`. Ứng dụng không có endpoint, nút hay job nào để công khai video. Bấm "Đã kiểm duyệt" (trên dashboard hoặc Telegram) chỉ đổi trạng thái trong DB thành `APPROVED_PRIVATE`.
 
@@ -32,6 +32,10 @@ python run.py          # Windows: bấm đúp start.bat (hoặc: py run.py) · m
 
 Lần đầu, ứng dụng ở chế độ **DEMO**: mọi dữ liệu đều giả lập và gắn nhãn, không upload thật. Bạn bấm **Săn tin → Quét tin ngay** để xem cả quy trình hoạt động.
 
+**Thời lượng: video không bao giờ dưới 10 phút.** Mặc định tối thiểu 600 giây, mục tiêu 660 giây, tối đa 720 giây, đo bằng audio thật. Audio ngắn hơn 10 phút → Claude viết lại (tối đa 3 lần), vẫn ngắn → video dừng ở `NEEDS_REVIEW`, không render, không upload. Media QA có thêm kiểm tra cứng *Không dưới 10 phút* trên file MP4 cuối. Trang Thiết lập từ chối giá trị dưới 600 giây; file `.env` cũ còn `DURATION_MIN_SECONDS=570` được tự nâng lên 600/660/720.
+
+**Quét tin ở chế độ production.** Lần quét đầu tiên khi chưa có nguồn RSS nào, ứng dụng tự thêm 4 nguồn mặc định: mục Xe của VnExpress, Tuổi Trẻ, Thanh Niên, Dân trí (chặn hoặc thêm nguồn ở **Thiết lập → Nguồn tin**). Sau mỗi lần bấm **Quét tin ngay**, trang hiện kết quả: số bài lấy được, bài mới, bài trùng, và **lý do của từng nguồn lỗi** (URL feed sai, trang trả 404, robots.txt chặn, mất mạng, vừa quét xong nên phải đợi giãn cách 60 giây). Một nguồn lỗi không làm hỏng các nguồn khác. Chưa nhập key Claude thì vẫn quét được; tin được lưu ở trạng thái `research` cho tới khi có Claude để tách và xác minh claim.
+
 ## 2. Cấu hình API ngay trong ứng dụng
 
 Mở **Thiết lập → Cấu hình API & dịch vụ**. Không cần sửa file nào. Key và token được mã hoá trước khi lưu vào database. Sau khi lưu, ứng dụng chỉ hiện lại 4 ký tự cuối. Giá trị nhập ở đây ghi đè file `.env`. Mỗi nhóm đều có nút **Kiểm tra** để thử kết nối.
@@ -43,7 +47,7 @@ Mở **Thiết lập → Cấu hình API & dịch vụ**. Không cần sửa fil
 | YouTube | Dán hoặc tải lên `client_secret.json` (OAuth client loại *Web application*), ID kênh đích | Kiểm tra JSON và redirect URI. Trang hiển thị sẵn URI để bạn sao chép vào Google Cloud Console |
 | Telegram | Bot token (lấy từ @BotFather) | Xác nhận bot hoạt động, liệt kê các chat vừa nhắn `/start` để bấm **Cho phép**, rồi gửi tin nhắn thử |
 | Kho tư liệu | Pexels key (tuỳ chọn), bật/tắt Wikimedia | Tìm thử một ảnh |
-| Biên tập, Dựng video, Bảo mật | Thời lượng, ngưỡng Autopilot, preset FFmpeg, mật khẩu chủ kênh/biên tập viên | — |
+| Biên tập, Dựng video, Bảo mật | Thời lượng (không dưới 600 giây), ngưỡng Autopilot, preset FFmpeg, mật khẩu chủ kênh/biên tập viên | — |
 
 Sau khi nhập key, đổi **Chế độ** sang `production`, rồi bấm **Kết nối kênh YouTube** để cấp quyền và chọn đúng kênh. Nếu thiếu key, video sẽ dừng ở trạng thái `BLOCKED_BY_CREDENTIALS` kèm đường dẫn mở trang Thiết lập, chứ không lặng lẽ chuyển sang dữ liệu giả lập.
 
@@ -57,14 +61,14 @@ Giữ nguyên: cấu hình và key đã nhập, **sổ cái ngân sách** (tiề
 
 **Truy cập:** khi mở trên chính máy chạy ứng dụng (127.0.0.1), bạn không cần mật khẩu. Khi truy cập từ máy khác, ứng dụng yêu cầu mật khẩu chủ kênh hoặc biên tập viên. Nếu ứng dụng nằm sau reverse proxy, các request có header proxy **không** được tin là truy cập cục bộ.
 
-**Dành cho lập trình viên:** `make test` chạy 133 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8010.
+**Dành cho lập trình viên:** `make test` chạy 145 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8010.
 
 ### Windows 11
 Nên dùng WSL2 (Ubuntu) với Docker Desktop. Cách native cũng chạy được với Python 3.12, FFmpeg (gyan.dev, có libass) và `pip install vieneu` (CPU/ONNX). GPU CUDA trên Windows cần cài `torch==2.8.0` cu128 trước, theo README của VieNeu.
 
 ## 3. Hai chế độ
 - **MANUAL:** chủ kênh chọn tin ở trang Săn tin. Pipeline dừng ở *Bản nháp kịch bản* để chờ duyệt, rồi dừng ở *Sẵn sàng tải RIÊNG TƯ* để chờ chủ kênh tick xác nhận và bấm upload.
-- **AUTOPILOT_PRIVATE** (bật trong Settings): tự chọn tin có điểm ≥ 80/100, mọi claim trọng yếu đã xác minh, tối đa 3 tin/ngày và chỉ khi Ban Tài chính còn đủ ngân sách. Pipeline chạy đến upload RIÊNG TƯ và Telegram, nhưng **dừng và chuyển sang `NEEDS_REVIEW`** nếu thiếu nguồn, claim đang tranh cãi, sai thời lượng sau 3 lần viết lại, QA không đạt, sai kênh, hoặc thiếu credential (`BLOCKED_BY_CREDENTIALS`).
+- **AUTOPILOT_PRIVATE** (bật trong Settings): tự chọn tin có điểm ≥ 80/100, mọi claim trọng yếu đã xác minh, tối đa 3 tin/ngày và chỉ khi Ban Tài chính còn đủ ngân sách. Pipeline chạy đến upload RIÊNG TƯ và Telegram, nhưng **dừng và chuyển sang `NEEDS_REVIEW`** nếu thiếu nguồn, claim đang tranh cãi, sai thời lượng (dưới 10 phút hoặc quá dài) sau 3 lần viết lại, QA không đạt, sai kênh, hoặc thiếu credential (`BLOCKED_BY_CREDENTIALS`).
 
 ## 3b. Ngân sách AI và bộ não phòng ban
 
@@ -134,7 +138,7 @@ prompts/pillars/P1|P2|P3.md       hồ sơ trụ cột
 prompts/reference/…               Mục IV nguyên văn (tham khảo văn phong)
 frontend/                         Next.js 15 + TypeScript (xuất tĩnh → backend/ev_studio/web_dist, backend phục vụ)
 migrations/                       Alembic
-tests/                            133 test
+tests/                            145 test
 run.py, start.bat, start.sh       chạy bằng một lệnh
 backend/ev_studio/runtime_config.py  cấu hình API lưu mã hoá trong DB
 backend/ev_studio/agents/            Ban Tài chính (budget, pricing) + bộ não phòng ban (brain, memory, teachers, learning, writer)
@@ -143,7 +147,7 @@ backend/ev_studio/error_log.py       Nhật ký lỗi: WARNING+ của ev_studio.
 
 **Ba loại duyệt được tách riêng:**
 - (a) Xác minh tin và claim: chặn ngay từ khâu sản xuất.
-- (b) Media QA (14 kiểm tra: codec, 1080p, 30fps, AAC 48k, thời lượng, đen hình, đứng hình, clipping, giấy phép, nguồn, thumbnail, font, SHA-256…): chặn upload.
+- (b) Media QA (15 kiểm tra: codec, 1080p, 30fps, AAC 48k, thời lượng, không dưới 10 phút, đen hình, đứng hình, clipping, giấy phép, nguồn, thumbnail, font, SHA-256…): chặn upload.
 - (c) Chủ kênh duyệt video cuối trên Telegram hoặc dashboard: **không** kích hoạt công khai.
 
 ## 5. Vận hành

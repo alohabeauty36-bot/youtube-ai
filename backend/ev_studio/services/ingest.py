@@ -17,15 +17,62 @@ from .sources.fetcher import FixtureSourceAdapter, RawArticle, RSSSourceAdapter
 log = logging.getLogger(__name__)
 
 
-def adapters_for(session: Session) -> list:
+# Nguồn RSS mặc định cho chế độ production: mục Xe của các báo lớn, chỉ đọc tiêu đề + tóm tắt công khai trong feed.
+# Chủ kênh có thể chặn/sửa/thêm ở Thiết lập → Nguồn tin. Mỗi lần quét báo rõ nguồn nào lỗi (URL đổi, bị chặn…).
+DEFAULT_RSS_SOURCES = [
+    {"name": "VnExpress — Xe", "domain": "vnexpress.net", "feed_url": "https://vnexpress.net/rss/oto-xe-may.rss", "trust_tier": 2},
+    {"name": "Tuổi Trẻ — Xe", "domain": "tuoitre.vn", "feed_url": "https://tuoitre.vn/rss/xe.rss", "trust_tier": 2},
+    {"name": "Thanh Niên — Xe", "domain": "thanhnien.vn", "feed_url": "https://thanhnien.vn/rss/xe.rss", "trust_tier": 2},
+    {"name": "Dân trí — Ô tô xe máy", "domain": "dantri.com.vn", "feed_url": "https://dantri.com.vn/rss/o-to-xe-may.rss", "trust_tier": 2},
+]
+DEFAULT_SOURCES_FLAG = "default_rss_sources_seeded"
+
+
+def ensure_default_sources(session: Session) -> int:
+    """Production chưa có nguồn RSS nào → thêm nguồn mặc định (một lần; nguồn chủ kênh đã chặn không bị thêm lại)."""
+    from ..workers.jobs import get_setting, set_setting
+
+    if get_settings().is_demo or get_setting(session, DEFAULT_SOURCES_FLAG, False):
+        return 0
+    has_feed = session.scalar(select(Source.id).where(Source.is_demo.is_(False), Source.feed_url.is_not(None),
+                                                      Source.feed_url != "").limit(1))
+    added = 0
+    if has_feed is None:
+        known = {u for (u,) in session.execute(select(Source.feed_url))}
+        for d in DEFAULT_RSS_SOURCES:
+            if d["feed_url"] not in known:
+                session.add(Source(**d, kind="rss"))
+                added += 1
+    set_setting(session, DEFAULT_SOURCES_FLAG, True)
+    session.flush()
+    if added:
+        log.info("Đã thêm %s nguồn RSS mặc định", added, extra={"evcs_source": "ingest"})
+    return added
+
+
+def adapters_for(session: Session) -> list[tuple[Source | None, object]]:
     s = get_settings()
     if s.is_demo:
-        return [FixtureSourceAdapter()]
+        return [(None, FixtureSourceAdapter())]
     out = []
-    for src in session.scalars(select(Source).where(Source.allowed.is_(True), Source.blocked.is_(False), Source.kind == "rss")):
-        if src.feed_url:
-            out.append(RSSSourceAdapter(src.feed_url, src.name, src.trust_tier, src.rate_limit_seconds))
+    q = select(Source).where(Source.allowed.is_(True), Source.blocked.is_(False), Source.is_demo.is_(False),
+                             Source.kind != "fixture", Source.feed_url.is_not(None), Source.feed_url != "")
+    for src in session.scalars(q.order_by(Source.trust_tier, Source.name)):
+        out.append((src, RSSSourceAdapter(src.feed_url.strip(), src.name, src.trust_tier, src.rate_limit_seconds or 60,
+                                          source_id=src.id)))
     return out
+
+
+def scan_writer():
+    """Bộ tách claim cho lượt quét. Thiếu key Claude vẫn quét được tin (chưa tách claim) và báo cho chủ kênh."""
+    from ..errors import BlockedByCredentials
+    from ..providers import get_writer
+
+    try:
+        return get_writer(), None
+    except BlockedByCredentials as e:
+        return None, (f"Chưa tách/xác minh claim vì thiếu cấu hình Claude ({e}). Tin vẫn được lưu ở trạng thái "
+                      "'research'; nhập API key ở Thiết lập rồi quét lại để chấm điểm đầy đủ.")
 
 
 def _sources_for(a: RawArticle, url: str) -> dict[str, fc.SourceRef]:
@@ -77,7 +124,7 @@ def ingest_articles(session: Session, articles: list[RawArticle], writer=None, a
         if dup is not None:
             session.add(NewsItem(title=a.title, url=a.url, canonical_url=canon, publisher=a.publisher, published_at=a.published_at,
                                  raw_excerpt=a.raw_excerpt, article_hash=ahash, status="duplicate", duplicate_of=dup.id,
-                                 trust_tier=a.trust_tier, is_demo=a.is_demo))
+                                 trust_tier=a.trust_tier, is_demo=a.is_demo, source_id=a.source_id))
             stats["duplicates"] += 1
             continue
         # 3. claim: fixture có sẵn; production → Claude trích xuất (trích dẫn phải khớp văn bản)
@@ -131,7 +178,7 @@ def ingest_articles(session: Session, articles: list[RawArticle], writer=None, a
             supporting_sources=[{**r.__dict__, "text": (r.text or "")[:4000]} for r in refs.values()],
             contradictions=[c["claim_key"] for c in contested], trust_tier=a.trust_tier, flags=a.flags, pillar=pillar,
             score=res.total, score_breakdown=res.breakdown, score_reasons=res.reasons + res.penalties,
-            curiosity_title=None, status=status, is_demo=a.is_demo,
+            curiosity_title=None, status=status, is_demo=a.is_demo, source_id=a.source_id,
         )
         for c in checked:
             item.claims.append(Claim(
@@ -174,13 +221,58 @@ def _cross_item_conflicts(session: Session, created: list[NewsItem]) -> None:
                         ni.status = "research"
 
 
-def run_scan(session: Session, writer=None, actor: str = "system") -> dict:
-    total = {"fetched": 0, "created": 0, "duplicates": 0, "blocked": 0}
-    for ad in adapters_for(session):
-        arts = ad.fetch()
+def run_scan(session: Session, writer=None, actor: str = "system", warnings: list[str] | None = None) -> dict:
+    """Quét mọi nguồn được phép. Một nguồn lỗi không làm hỏng cả lượt; kết quả từng nguồn nằm trong `sources`."""
+    from ..errors import RetryableError
+    from .sources.fetcher import FeedSkipped
+
+    warns = list(warnings or [])
+    if not get_settings().is_demo:
+        added = ensure_default_sources(session)
+        if added:
+            warns.append(f"Chưa có nguồn RSS nào nên đã thêm {added} nguồn mặc định (VnExpress, Tuổi Trẻ, Thanh Niên, Dân trí). "
+                         "Xem/chặn/thêm nguồn ở Thiết lập → Nguồn tin.")
+    total: dict = {"fetched": 0, "created": 0, "duplicates": 0, "blocked": 0}
+    per_source: list[dict] = []
+    pairs = adapters_for(session)
+    if not pairs:
+        warns.append("Không có nguồn RSS nào đang bật. Vào Thiết lập → Nguồn tin để thêm feed RSS hoặc bỏ chặn nguồn.")
+    for src, ad in pairs:
+        name = src.name if src else "DEMO fixtures"
+        rep = {"source": name, "feed_url": getattr(src, "feed_url", None), "ok": False, "fetched": 0, "created": 0}
+        try:
+            arts = ad.fetch()
+        except FeedSkipped as e:
+            rep["error"] = e.reason
+            per_source.append(rep)
+            continue
+        except RetryableError as e:
+            log.warning("Quét %s lỗi mạng: %s", name, e, extra={"evcs_source": "ingest"})
+            rep["error"] = f"Lỗi mạng/máy chủ, lần quét sau sẽ thử lại: {e}"
+            per_source.append(rep)
+            continue
+        except Exception as e:  # noqa: BLE001 — một feed hỏng không được chặn các feed khác
+            log.exception("Quét %s lỗi: %s", name, e, extra={"evcs_source": "ingest"})
+            rep["error"] = f"{type(e).__name__}: {e}"
+            per_source.append(rep)
+            continue
         st = ingest_articles(session, arts, writer=writer, actor=actor)
+        session.commit()  # lưu tin của nguồn này ngay; nguồn sau lỗi cũng không mất
         for k, v in st.items():
-            total[k] = total.get(k, 0) + v
-    for src in session.scalars(select(Source)):
-        src.last_fetched_at = now()
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                total[k] = total.get(k, 0) + v
+            elif k == "budget_reason":
+                warns.append(f"Ngân sách AI: {v}")
+        rep.update(ok=True, fetched=st["fetched"], created=st["created"], duplicates=st["duplicates"])
+        if not st["fetched"]:
+            rep["note"] = "Feed không có bài nào"
+        if src is not None:
+            src.last_fetched_at = now()
+        per_source.append(rep)
+    if pairs and not any(r["ok"] for r in per_source):
+        warns.append("Không nguồn nào trả tin. Xem lý do của từng nguồn bên dưới.")
+    if total.get("skipped_offtopic"):
+        warns.append(f"Bỏ qua {total['skipped_offtopic']} bài không thuộc chủ đề xe điện (không tốn tiền AI).")
+    total["sources"] = per_source
+    total["warnings"] = list(dict.fromkeys(warns))
     return total
