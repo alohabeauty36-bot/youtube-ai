@@ -17,13 +17,13 @@ Cần có: **Python 3.11 trở lên** và **FFmpeg**. Trên Windows, nếu chưa
 python run.py          # Windows: bấm đúp start.bat (hoặc: py run.py) · macOS/Linux: ./start.sh
 ```
 
-**Lần chạy đầu**, lệnh này sẽ: tạo môi trường `.venv` riêng → cài thư viện → tạo database và khoá mã hoá (`data/.secret_key`) → chạy server → mở **http://localhost:8000**.
+**Lần chạy đầu**, lệnh này sẽ: tạo môi trường `.venv` riêng → cài thư viện → tạo database và khoá mã hoá (`data/.secret_key`) → chạy server → mở **http://localhost:8010**.
 **Các lần sau**, ứng dụng khởi động ngay. Giao diện web và API chạy chung một cổng, không cần Node.js.
 
 | Tuỳ chọn | Ý nghĩa |
 |---|---|
 | `--with-tts` | Cài thêm VieNeu-TTS để dùng giọng đọc thật (CPU) |
-| `--port 8010` | Đổi cổng |
+| `--port 8020` | Đổi cổng (mặc định 8010) |
 | `--host 0.0.0.0` | Cho máy khác trong mạng truy cập. Khi đó **bắt buộc** đặt mật khẩu chủ kênh |
 | `--no-browser` | Không tự mở trình duyệt |
 | `--build-web` | Build lại giao diện từ `frontend/` (cần Node.js 20+, chỉ dành cho lập trình viên) |
@@ -47,7 +47,7 @@ Sau khi nhập key, đổi **Chế độ** sang `production`, rồi bấm **Kế
 
 **Truy cập:** khi mở trên chính máy chạy ứng dụng (127.0.0.1), bạn không cần mật khẩu. Khi truy cập từ máy khác, ứng dụng yêu cầu mật khẩu chủ kênh hoặc biên tập viên. Nếu ứng dụng nằm sau reverse proxy, các request có header proxy **không** được tin là truy cập cục bộ.
 
-**Dành cho lập trình viên:** `make test` chạy 97 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8000.
+**Dành cho lập trình viên:** `make test` chạy 97 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8010.
 
 ### Windows 11
 Nên dùng WSL2 (Ubuntu) với Docker Desktop. Cách native cũng chạy được với Python 3.12, FFmpeg (gyan.dev, có libass) và `pip install vieneu` (CPU/ONNX). GPU CUDA trên Windows cần cài `torch==2.8.0` cu128 trước, theo README của VieNeu.

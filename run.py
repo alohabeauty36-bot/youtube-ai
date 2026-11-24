@@ -3,11 +3,11 @@
 
     python run.py            (Windows: py run.py hoặc bấm đúp start.bat)
 
-Lần đầu: tự tạo môi trường .venv, cài thư viện, tạo database, rồi mở http://localhost:8000.
+Lần đầu: tự tạo môi trường .venv, cài thư viện, tạo database, rồi mở http://localhost:8010.
 Các lần sau: khởi động ngay. Mọi key/API cấu hình trong trang Thiết lập của ứng dụng (không cần sửa file).
 
 Tuỳ chọn:
-  --port 8000         cổng (mặc định 8000)
+  --port 8010         cổng (mặc định 8010)
   --host 127.0.0.1    địa chỉ nghe. Mặc định chỉ máy này truy cập được (không cần mật khẩu).
                       Dùng 0.0.0.0 để mở cho máy khác trong mạng — khi đó BẮT BUỘC đặt mật khẩu chủ kênh.
   --with-tts          cài thêm VieNeu-TTS (giọng đọc thật, chạy CPU)
@@ -154,7 +154,7 @@ def open_when_ready(url: str) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description="Chạy EV Creator Studio")
     ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--port", type=int, default=8000)
+    ap.add_argument("--port", type=int, default=8010)
     ap.add_argument("--with-tts", action="store_true")
     ap.add_argument("--build-web", action="store_true")
     ap.add_argument("--no-browser", action="store_true")
@@ -172,7 +172,7 @@ def main() -> None:
     os.environ["EVCS_TRUST_LOCALHOST"] = "1" if local_only else "0"
     url = f"http://localhost:{args.port}"
     if port_busy(args.host, args.port):
-        say(f"Cổng {args.port} đang được dùng — có thể ứng dụng đã chạy. Mở {url} hoặc dùng --port 8010.")
+        say(f"Cổng {args.port} đang được dùng — có thể ứng dụng đã chạy. Mở {url} hoặc dùng --port 8020.")
         if not args.no_browser:
             webbrowser.open(url)
         return

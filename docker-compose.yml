@@ -1,4 +1,4 @@
-# Chạy: docker compose up -d --build  → mở http://localhost:8000 (giao diện + API cùng cổng).
+# Chạy: docker compose up -d --build  → mở http://localhost:8010 (giao diện + API cùng cổng).
 # Key API nhập trong Thiết lập → Cấu hình API (lưu mã hoá trong Postgres). .env chỉ cần cho hạ tầng.
 # Không đặt secret trực tiếp trong file này.
 services:
@@ -20,7 +20,7 @@ services:
       MEDIA_LIBRARY_DIR: /data/media_library
       DATA_DIR: /data/app
     volumes: [artifacts:/data, ./secrets:/app/secrets:ro]
-    ports: ["8000:8000"]
+    ports: ["8010:8010"]
     depends_on: { postgres: { condition: service_healthy }, redis: { condition: service_started } }
   worker:
     # worker pipeline + VieNeu (CPU). Tách máy GPU: chạy image này trên máy có GPU, trỏ cùng Postgres/Redis/volume.
