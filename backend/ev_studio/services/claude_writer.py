@@ -78,8 +78,14 @@ def render_developer_message(bundle: PromptBundle, ctx: dict[str, Any]) -> str:
     out = bundle.developer_template
     for k, v in values.items():
         out = out.replace("{{" + k + "}}", v)
-    target = ctx.get("target_duration_seconds", 600)
-    out = out.replace("TARGET_DURATION_SECONDS: 600", f"TARGET_DURATION_SECONDS: {int(target)}")
+    from ..config import MIN_VIDEO_SECONDS
+
+    target = float(ctx.get("target_duration_seconds") or 660)
+    lo = float(ctx.get("min_duration_seconds") or MIN_VIDEO_SECONDS)
+    hi = float(ctx.get("max_duration_seconds") or max(target + 60, lo + 120))
+    out = re.sub(r"^TARGET_DURATION_SECONDS: .*$", f"TARGET_DURATION_SECONDS: {int(target)}", out, flags=re.M)
+    out = re.sub(r"^MIN_DURATION_SECONDS: .*$", f"MIN_DURATION_SECONDS: {int(lo)}", out, flags=re.M)
+    out = re.sub(r"^MAX_DURATION_SECONDS: .*$", f"MAX_DURATION_SECONDS: {int(hi)}", out, flags=re.M)
     if ctx.get("previous_spoken_script") and ctx.get("actual_audio_seconds"):
         out += f"\nPREVIOUS_SPOKEN_SCRIPT_WORDS: {len(ctx['previous_spoken_script'].split())}"
         out += f"\nPREVIOUS_SPOKEN_SCRIPT: {json.dumps(ctx['previous_spoken_script'], ensure_ascii=False)}"
@@ -209,7 +215,7 @@ class DemoWriter:
         src = {s["source_id"]: s for s in pack["sources"]}
         topic = pack.get("topic", "chủ đề hôm nay")
         q = ctx["core_question"]
-        target_s = ctx.get("target_duration_seconds", 600)
+        target_s = ctx.get("target_duration_seconds", 660)
         if ctx.get("actual_audio_seconds") and ctx.get("previous_spoken_script"):
             prev_words = len(ctx["previous_spoken_script"].split())
             target_words = int(prev_words * target_s / float(ctx["actual_audio_seconds"]))
@@ -329,6 +335,12 @@ def _demo_paragraphs(pillar: str, topic: str, q: str, facts: list[str], inferenc
         (False, "Từ phía doanh nghiệp, một chương trình có thời hạn là cách thử phản ứng của thị trường. Nếu người dùng hưởng ứng, chương trình có thể được kéo dài hoặc điều chỉnh. Nếu không, nó sẽ kết thúc đúng hạn. Đây là suy luận theo logic kinh doanh thông thường, chưa phải thông tin đã được công bố.", 45),
         (False, "Có một chi tiết thực tế mà ít ai nhắc tới: hãy kiểm tra ứng dụng hoặc hóa đơn sau lần sạc đầu tiên trong thời gian ưu đãi. Nếu mức giá hiển thị không như bạn hiểu, đó là lúc nên hỏi lại ngay, thay vì chờ đến cuối tháng mới phát hiện.", 55),
         (False, "Nhìn rộng hơn, mỗi thay đổi về giá sạc hay chính sách đều là một mảnh ghép trong bài toán sở hữu xe điện. Không có mảnh ghép nào tự nó quyết định tất cả. Người mua thông minh là người nhìn được cả bức tranh, và biết mảnh nào phù hợp với hoàn cảnh của mình.", 56),
+        # thêm đoạn tuỳ chọn để bản DEMO đủ dài trên 10 phút (video không được dưới 10 phút)
+        (False, "Có một cách đọc thông báo mà bạn có thể áp dụng ngay hôm nay. Đọc tiêu đề để biết chủ đề, rồi nhảy thẳng xuống phần điều kiện. Sau đó mới quay lên đọc phần lợi ích. Làm theo thứ tự ngược này, bạn sẽ ít bị cuốn theo cảm xúc của những câu mở đầu và nhìn rõ hơn ai thực sự được hưởng.", 25),
+        (False, "Thêm một điều nữa về cách đo đếm. Khi so sánh chi phí giữa xe điện và xe xăng, nhiều người chỉ tính tiền năng lượng mỗi ki-lô-mét. Thực ra còn có chi phí bảo dưỡng, chi phí thời gian chờ sạc và giá trị bán lại sau vài năm. Bỏ qua những phần này, phép so sánh sẽ đẹp hơn thực tế, hoặc xấu hơn thực tế, tùy bạn bỏ phần nào.", 36),
+        (False, "Ở góc nhìn của người làm chính sách, mục tiêu thường không chỉ là một nhóm khách hàng hôm nay. Họ quan tâm tới việc thói quen dùng xe điện có được hình thành lâu dài hay không. Một chương trình có thể thành công ở con số ngắn hạn nhưng chưa chắc đã thay đổi được hành vi của người dùng sau khi kết thúc. Đây là câu hỏi mở, cần thêm dữ liệu theo thời gian để trả lời.", 46),
+        (False, "Còn một nhóm người dùng nữa ít được nhắc tới, đó là người ở chung cư. Họ thường không thể tự lắp bộ sạc tại chỗ đỗ xe, nên phụ thuộc nhiều vào trạm công cộng hoặc quy định của ban quản lý tòa nhà. Với nhóm này, khoảng cách tới trạm và giờ mở cửa của bãi xe có khi quan trọng hơn cả mức giá trên mỗi lần sạc.", 57),
+        (False, "Tóm lại phần phân tích, có ba điều bạn nên mang theo. Thứ nhất, luôn kiểm tra đối tượng áp dụng. Thứ hai, ghi lại thời hạn. Thứ ba, tự làm phép tính với số liệu của chính mình thay vì dùng con số trung bình. Ba thói quen này mất vài phút, nhưng có thể giúp bạn tránh những quyết định đáng tiếc.", 58),
     ]
     # bỏ chỗ trống nếu không có đủ fact
     return [(req, re.sub(r"\s{2,}", " ", txt).strip(), order) for req, txt, order in P]

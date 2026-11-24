@@ -69,3 +69,19 @@ export function DemoBanner({ show }: { show?: boolean }) {
   if (!show) return null;
   return <div className="demo-banner">DEMO — dữ liệu giả lập, adapter giả lập. Không có upload YouTube hay tin nhắn Telegram thật.</div>;
 }
+
+/** Kết quả một lượt "Quét tin ngay": tổng số, cảnh báo, và lý do từng nguồn lỗi. */
+export function ScanResult({ r }: { r: any }) {
+  if (!r) return null;
+  const bad = (r.sources || []).filter((s: any) => !s.ok);
+  const good = (r.sources || []).filter((s: any) => s.ok);
+  return (
+    <div className={r.created > 0 ? "hint" : "error"} style={{ marginBottom: 12 }}>
+      <div><b>Kết quả quét:</b> lấy {r.fetched ?? 0} bài · thêm mới {r.created ?? 0} · trùng {r.duplicates ?? 0} · chặn {r.blocked ?? 0}
+        {good.length > 0 && <> · {good.length} nguồn đạt</>}{bad.length > 0 && <> · {bad.length} nguồn lỗi</>}</div>
+      {(r.warnings || []).length > 0 && <ul className="small">{r.warnings.map((w: string, i: number) => <li key={i}>{w}</li>)}</ul>}
+      {bad.length > 0 && <ul className="small">{bad.map((s: any, i: number) => <li key={i}><b>{s.source}</b>: {s.error}</li>)}</ul>}
+      {r.created === 0 && r.duplicates > 0 && !bad.length && <div className="small">Không có tin mới so với lần quét trước.</div>}
+    </div>
+  );
+}

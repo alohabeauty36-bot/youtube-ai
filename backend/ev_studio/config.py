@@ -7,12 +7,13 @@ import time
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PKG_DIR = Path(__file__).resolve().parent
 FONT_DIR = PKG_DIR / "assets" / "fonts"
+MIN_VIDEO_SECONDS = 600.0  # 10 phút — video không bao giờ được ngắn hơn
 
 
 class Settings(BaseSettings):
@@ -120,9 +121,12 @@ class Settings(BaseSettings):
     telegram_callback_ttl_seconds: int = 7 * 24 * 3600
 
     # --- biên tập / thời lượng ---
-    duration_target_seconds: float = 600
-    duration_min_seconds: float = 570
-    duration_max_seconds: float = 630
+    # Video KHÔNG được dưới 10 phút (MIN_VIDEO_SECONDS). Mục tiêu 11 phút để audio đo thật có biên an toàn.
+    duration_target_seconds: float = 660
+    duration_min_seconds: float = 600
+    duration_max_seconds: float = 720
+    # CHỈ dành cho test tự động (rút ngắn thời lượng cho nhanh). Không đặt biến này khi chạy thật.
+    allow_short_duration_for_tests: bool = Field(False, validation_alias="EVCS_ALLOW_SHORT_DURATION")
     max_script_revisions: int = 3
     score_shortlist: int = 75
     score_research: int = 60
@@ -150,6 +154,21 @@ class Settings(BaseSettings):
     def _abs(cls, v):
         p = Path(v)
         return p if p.is_absolute() else (REPO_ROOT / p)
+
+    @model_validator(mode="after")
+    def _enforce_min_duration(self):
+        """Sàn cứng 10 phút. Giá trị cũ (vd. .env có DURATION_MIN_SECONDS=570) được nâng lên, không làm sập app."""
+        if self.allow_short_duration_for_tests:
+            return self
+        lo = max(float(self.duration_min_seconds), MIN_VIDEO_SECONDS)
+        target = float(self.duration_target_seconds)
+        if target < lo + 30:  # mục tiêu sát sàn → audio đo thật dễ hụt dưới 10 phút
+            target = lo + 60
+        hi = max(float(self.duration_max_seconds), target + 60)
+        object.__setattr__(self, "duration_min_seconds", lo)
+        object.__setattr__(self, "duration_target_seconds", target)
+        object.__setattr__(self, "duration_max_seconds", hi)
+        return self
 
     @property
     def is_demo(self) -> bool:

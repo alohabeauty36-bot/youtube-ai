@@ -19,6 +19,7 @@ from ...errors import RetryableError
 
 log = logging.getLogger(__name__)
 USER_AGENT = "EVCreatorStudioBot/1.0 (+independent channel; respects robots.txt)"
+FEED_ACCEPT = "application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.9, */*;q=0.5"
 
 
 @dataclass
@@ -39,6 +40,15 @@ class RawArticle:
     claims: list[dict] | None = None  # fixture có sẵn claim; production → trích xuất bằng Claude
     is_demo: bool = False
     source_name: str | None = None
+    source_id: str | None = None  # id dòng `sources` (nguồn RSS thật)
+
+
+class FeedSkipped(Exception):
+    """Feed không lấy được tin vì lý do không cần thử lại ngay (rate limit, robots.txt, URL sai…). Hiện cho chủ kênh."""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
 
 
 class SourceAdapter(Protocol):
@@ -120,21 +130,24 @@ class RSSSourceAdapter:
     """Lấy tin qua RSS/Atom. Chỉ dùng tiêu đề + tóm tắt do nguồn phát hành công khai trong feed."""
 
     def __init__(self, feed_url: str, publisher: str, trust_tier: int, rate_limit_seconds: int = 60,
-                 client: httpx.Client | None = None):
+                 client: httpx.Client | None = None, source_id: str | None = None):
         self.feed_url, self.publisher, self.trust_tier = feed_url, publisher, trust_tier
         self.rate_limit_seconds = rate_limit_seconds
-        self.client = client or httpx.Client(headers={"User-Agent": USER_AGENT}, follow_redirects=True, timeout=20)
+        self.source_id = source_id
+        self.client = client or httpx.Client(headers={"User-Agent": USER_AGENT, "Accept": FEED_ACCEPT},
+                                             follow_redirects=True, timeout=20)
 
     def fetch(self) -> list[RawArticle]:
         import feedparser
 
         last = _last_fetch.get(self.feed_url, 0)
-        if time.time() - last < self.rate_limit_seconds:
-            log.info("Bỏ qua %s: chưa hết rate limit", self.feed_url)
-            return []
+        wait = self.rate_limit_seconds - (time.time() - last)
+        if wait > 0:
+            raise FeedSkipped(f"Vừa quét {self.rate_limit_seconds - int(wait)} giây trước — đợi thêm {int(wait) + 1} giây "
+                              "(giãn cách để không làm phiền nguồn tin)")
         if not _robots.allowed(self.client, self.feed_url):
-            log.warning("robots.txt không cho phép: %s", self.feed_url)
-            return []
+            log.warning("robots.txt không cho phép: %s", self.feed_url, extra={"evcs_source": "ingest"})
+            raise FeedSkipped("robots.txt của trang không cho phép bot đọc feed này")
         try:
             r = self.client.get(self.feed_url)
         except httpx.HTTPError as e:
@@ -143,19 +156,24 @@ class RSSSourceAdapter:
         if r.status_code >= 500 or r.status_code == 429:
             raise RetryableError(f"Feed {self.feed_url} trả {r.status_code}")
         if r.status_code != 200:
-            log.warning("Feed %s trả %s", self.feed_url, r.status_code)
-            return []
+            log.warning("Feed %s trả %s", self.feed_url, r.status_code, extra={"evcs_source": "ingest"})
+            raise FeedSkipped(f"Trang trả mã {r.status_code} — kiểm tra lại URL feed")
         parsed = feedparser.parse(r.content)
+        if not parsed.entries:
+            if parsed.get("bozo") or not parsed.get("version"):  # trang HTML/URL sai: không nhận ra RSS/Atom
+                raise FeedSkipped("Nội dung trả về không phải RSS/Atom hợp lệ — kiểm tra lại URL feed")
+            return []
         out = []
         for e in parsed.entries[:50]:
-            link = e.get("link") or ""
-            if not link:
+            link = (e.get("link") or "").strip()
+            title = (e.get("title") or "").strip()
+            if not link or not title:
                 continue
             excerpt = e.get("summary") or e.get("description") or ""
             out.append(RawArticle(
-                title=e.get("title", "").strip(), url=link, publisher=self.publisher,
+                title=_strip_html(title), url=link, publisher=self.publisher,
                 published_at=_dt(e.get("published") or e.get("updated")), raw_excerpt=_strip_html(excerpt)[:4000],
-                trust_tier=self.trust_tier, source_name=self.publisher,
+                trust_tier=self.trust_tier, source_name=self.publisher, source_id=self.source_id,
             ))
         return out
 

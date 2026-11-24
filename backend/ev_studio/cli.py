@@ -104,12 +104,12 @@ def main(argv: list[str] | None = None) -> int:
     if cmd == "demo":
         return cmd_demo()
     if cmd == "scan":
-        from .providers import get_writer
-        from .services.ingest import run_scan
+        from .services.ingest import run_scan, scan_writer
 
         init_db()
         with SessionLocal() as db:
-            _p(run_scan(db, writer=get_writer()))
+            writer, warn = scan_writer()
+            _p(run_scan(db, writer=writer, warnings=[warn] if warn else None))
             db.commit()
         return 0
     if cmd == "autopilot-tick":

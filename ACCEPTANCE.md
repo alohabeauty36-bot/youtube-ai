@@ -3,7 +3,7 @@
 Ngày chạy: 23/11/2026, máy build Linux, 2 vCPU, không GPU, không có credential thật.
 `PASS` chỉ được ghi khi đã có lần chạy thật. Những tích hợp chưa có key được ghi `BLOCKED_BY_CREDENTIALS`, kèm lý do cụ thể.
 
-**Lệnh chung:** `python run.py` khởi chạy toàn bộ ứng dụng (đã thử từ thư mục sạch trên Linux). `make test` → **90 passed** (pytest, khoảng 105 giây). `make demo` → toàn tuyến DEMO 10 phút **PASS**: MP4 1080p dài 596,8 giây, Media QA 14/14 đạt, upload DEMO `private`, đọc lại `private`, Telegram DEMO đã gửi, story ở trạng thái `EDITOR_REVIEW`, tổng thời gian khoảng 5,4 phút.
+**Lệnh chung:** `python run.py` khởi chạy toàn bộ ứng dụng (đã thử từ thư mục sạch trên Linux). `make test` → **145 passed** (pytest, khoảng 4,5 phút). `make demo` → toàn tuyến DEMO **PASS**: MP4 1080p dài 653,9 giây (10 phút 54 giây, trên sàn 10 phút), Media QA 15/15 đạt, upload DEMO `private`, đọc lại `private`, Telegram DEMO đã gửi, story ở trạng thái `EDITOR_REVIEW`, tổng thời gian khoảng 7,2 phút.
 
 ## Mục V — Điểm kiểm soát bàn giao
 
@@ -32,9 +32,9 @@ Ngày chạy: 23/11/2026, máy build Linux, 2 vCPU, không GPU, không có crede
 | 1 | Nhập prompt nguồn, 3 cấu hình trụ cột, đúng 3 tiêu đề | PASS | `prompts/pillars/P1-3.md`; schema bắt buộc 3 tiêu đề; QA chặn tiêu đề khẳng định quá mức |
 | 2 | Quét 10 URL (2 trùng, 1 thiếu nguồn), dedupe, chặn | PASS | `test_scan_dedupes_and_blocks_missing_source` |
 | 3 | ResearchPack ≥ 2 nguồn, hiển thị mapping claim → URL, ngày | PASS (DEMO writer) | trang Biên tập; `research_pack.content.sources/claims` |
-| 4 | Kịch bản + TTS đạt 570–630 giây đo thật; nghe lại từng segment | PASS với TTS DEMO (596,8 giây) / chưa thử giọng VieNeu thật | `make demo`; `test_duration_loop_rewrites_using_actual_audio` (viết lại theo ACTUAL_AUDIO_SECONDS) |
+| 4 | Kịch bản + TTS đạt 600–720 giây đo thật (không bao giờ dưới 10 phút); nghe lại từng segment | PASS với TTS DEMO (653,9 giây) / chưa thử giọng VieNeu thật | `make demo`; `test_duration_loop_rewrites_using_actual_audio` (viết lại theo ACTUAL_AUDIO_SECONDS) |
 | 5 | Render 1080p, mỗi cảnh có asset_id hoặc đồ họa nội bộ, không ghép sai mẫu xe | PASS | `test_autopilot_end_to_end_demo`; `test_wrong_model_becomes_illustration` |
-| 6 | QA pass, SEO, thumbnail, preview | PASS | Media QA 14/14 |
+| 6 | QA pass, SEO, thumbnail, preview | PASS | Media QA 15/15 (thêm kiểm tra cứng *Không dưới 10 phút*) |
 | 7 | Upload OAuth vào đúng kênh, ép private, đọc lại, Telegram | PASS (DEMO) / BLOCKED_BY_CREDENTIALS | `test_wrong_channel_is_blocked`, `test_privacy_readback_mismatch_forces_private` |
 | 8 | "Đã kiểm duyệt" → video vẫn private; công khai thủ công chỉ được quan sát | PASS | `test_telegram_callbacks_…`, `test_owner_manual_publish_is_only_observed` |
 | 9 | Lỗi giả lập: mất mạng khi upload, TTS lỗi, sai key, thiếu giấy phép, sai kênh, bot offline | PASS | `test_network_drop_…`, `test_timeout_after_youtube_received_reconciles_by_tag`, `test_tts_failure_retries_then_raises`, `test_missing_key_blocks_in_production`, `test_gates_block_…`, `test_telegram_offline_keeps_private_and_warns` |

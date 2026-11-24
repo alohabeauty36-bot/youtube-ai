@@ -125,8 +125,10 @@ FIELDS: list[ConfigField] = [
     ConfigField("pexels_api_key", "Pexels API key", "media", "secret", help="Miễn phí tại pexels.com/api (tuỳ chọn)."),
     ConfigField("wikimedia_enabled", "Tìm ảnh trên Wikimedia Commons", "media", "bool"),
     ConfigField("wikimedia_user_agent", "User-Agent gửi Wikimedia (kèm email liên hệ)", "media", "text"),
-    ConfigField("duration_target_seconds", "Thời lượng mục tiêu (giây)", "editorial", "float"),
-    ConfigField("duration_min_seconds", "Tối thiểu (giây)", "editorial", "float"),
+    ConfigField("duration_target_seconds", "Thời lượng mục tiêu (giây)", "editorial", "float",
+                help="Mặc định 660 giây (11 phút) để audio đo thật có biên an toàn trên 10 phút."),
+    ConfigField("duration_min_seconds", "Tối thiểu (giây)", "editorial", "float",
+                help="Không được dưới 600 giây (10 phút). Video ngắn hơn bị chặn, không render/upload."),
     ConfigField("duration_max_seconds", "Tối đa (giây)", "editorial", "float"),
     ConfigField("score_autopilot", "Ngưỡng điểm Autopilot", "editorial", "int"),
     ConfigField("max_videos_per_week", "Tối đa video/tuần (Autopilot)", "editorial", "int"),
@@ -232,8 +234,16 @@ def save(session, values: dict[str, Any], clear: list[str], actor: str) -> SaveR
     for c in clear:
         merged.pop(c, None)
     Settings.model_validate(merged)
+    if not merged.get("allow_short_duration_for_tests"):
+        from .config import MIN_VIDEO_SECONDS
+
+        for k in ("duration_min_seconds", "duration_target_seconds", "duration_max_seconds"):
+            if k in staged and float(staged[k]) < MIN_VIDEO_SECONDS:
+                raise ValueError(f"{BY_KEY[k].label}: video không được dưới 10 phút ({MIN_VIDEO_SECONDS:.0f} giây)")
     if merged.get("duration_min_seconds", 0) >= merged.get("duration_max_seconds", 1):
         raise ValueError("Thời lượng tối thiểu phải nhỏ hơn tối đa")
+    if not merged.get("duration_min_seconds", 0) <= merged.get("duration_target_seconds", 0) <= merged.get("duration_max_seconds", 0):
+        raise ValueError("Thời lượng mục tiêu phải nằm giữa tối thiểu và tối đa")
     if not 0 < float(merged.get("budget_monthly_usd", 50)) <= 10000:
         raise ValueError("Trần chi tiêu tháng phải trong khoảng 0–10.000 USD")
     if not 0 <= float(merged.get("budget_safety_margin", 0.05)) < 0.5:

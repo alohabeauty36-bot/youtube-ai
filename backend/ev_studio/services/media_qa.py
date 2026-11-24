@@ -32,7 +32,7 @@ def _filter_log(path: Path, vf: str | None = None, af: str | None = None) -> str
 
 def run_media_qa(video: Path, *, exact_10min: bool, dur_min: float, dur_max: float, assets: list[dict],
                  on_screen_facts_ok: bool, description: str, sources: list[dict], thumbnail: Path | None,
-                 subtitle: Path | None, music_present: bool = False) -> dict:
+                 subtitle: Path | None, music_present: bool = False, hard_min_seconds: float = 600.0) -> dict:
     checks: list[dict] = []
 
     def add(name, ok, detail=""):
@@ -52,6 +52,8 @@ def run_media_qa(video: Path, *, exact_10min: bool, dur_min: float, dur_max: flo
     dur = float(info.get("format", {}).get("duration", 0) or 0)
     add("Thời lượng " + (f"{dur_min:.0f}–{dur_max:.0f}s" if exact_10min else "hợp lệ"),
         (dur_min <= dur <= dur_max) if exact_10min else dur > 0, f"{dur:.1f}s")
+    if hard_min_seconds > 0:  # sàn cứng: video không bao giờ được dưới 10 phút, kể cả khi cấu hình sai
+        add(f"Không dưới {hard_min_seconds / 60:.0f} phút", dur >= hard_min_seconds, f"{dur:.1f}s")
 
     log = _filter_log(video, vf="blackdetect=d=0.5:pix_th=0.06")
     blacks = re.findall(r"black_duration:([\d.]+)", log)

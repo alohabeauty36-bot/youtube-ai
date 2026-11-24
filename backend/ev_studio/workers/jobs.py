@@ -8,7 +8,7 @@ from pathlib import Path
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..config import get_settings
+from ..config import MIN_VIDEO_SECONDS, get_settings
 from ..error_log import was_logged
 from ..errors import BlockedByCredentials, ChannelMismatch, GateBlocked, PermanentError, PrivacyViolation, RetryableError
 from ..models import (
@@ -186,6 +186,7 @@ def script_job(session: Session, story: Story, p: Providers, actual_audio_second
     ctx = {"pillar": story.pillar, "research_pack": rp.content, "claims_to_avoid": rp.content.get("claims_to_avoid", []),
            "recent_topics": recent_topics, "core_question": story.core_question or story.topic,
            "special_requests": story.editorial_notes, "target_duration_seconds": s.duration_target_seconds,
+           "min_duration_seconds": s.duration_min_seconds, "max_duration_seconds": s.duration_max_seconds,
            "actual_audio_seconds": actual_audio_seconds,
            "previous_spoken_script": prev.spoken_script if (prev and actual_audio_seconds) else None, "story_id": story.id}
     w = p.get_writer()
@@ -460,7 +461,8 @@ def qa_job(session: Session, story: Story, p: Providers) -> dict:
                                 assets=assets, on_screen_facts_ok=facts_ok, description=v.description if v else "",
                                 sources=story.news_item.supporting_sources or [],
                                 thumbnail=Path(r.thumbnail_paths[0]) if r.thumbnail_paths else None,
-                                subtitle=Path(r.subtitle_srt_path) if r.subtitle_srt_path else None)
+                                subtitle=Path(r.subtitle_srt_path) if r.subtitle_srt_path else None,
+                                hard_min_seconds=0 if s.allow_short_duration_for_tests else MIN_VIDEO_SECONDS)
     r.qa, r.qa_passed, r.duration, r.width, r.height = res, res["passed"], res["duration"], res["width"], res["height"]
     if res["sha256"] != r.sha256:
         r.qa_passed = False

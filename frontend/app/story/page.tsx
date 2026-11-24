@@ -38,7 +38,7 @@ function Editor() {
               <p><b>Rủi ro:</b></p><ul>{s.research_pack.content.risk_notes?.map((x: string, i: number) => <li key={i}>{x}</li>)}</ul>
               <p><b>Câu hỏi trung tâm:</b> {s.core_question}</p></div> : <p className="muted">Chưa có.</p>}
           </Card>
-          <Card title="Audio (VieNeu-TTS)" right={sc?.actual_audio_seconds && <Badge kind={sc.actual_audio_seconds >= 570 && sc.actual_audio_seconds <= 630 ? "ok" : "warn"}>{fmtTime(sc.actual_audio_seconds)} đo thật</Badge>}>
+          <Card title="Audio (VieNeu-TTS)" right={sc?.actual_audio_seconds && <Badge kind={sc.actual_audio_seconds >= 600 ? "ok" : "bad"}>{fmtTime(sc.actual_audio_seconds)} đo thật</Badge>}>
             {voices.data?.is_demo && <div className="error small">🔇 {voices.data.notice} <Link href="/settings">Mở Thiết lập → Giọng đọc → Kiểm tra</Link></div>}
             {s.audio_url && <audio controls src={mediaUrl(s.audio_url)} style={{ width: "100%" }} />}
             <div className="row" style={{ marginTop: 8 }}>

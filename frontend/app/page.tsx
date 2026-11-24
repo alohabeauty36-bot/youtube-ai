@@ -2,12 +2,12 @@
 import Link from "next/link";
 import { useState } from "react";
 import { api } from "@/lib/api";
-import { Badge, Card, DemoBanner, ErrorBox, STATE_LABEL, useLoad } from "@/components/ui";
+import { Badge, Card, DemoBanner, ErrorBox, STATE_LABEL, ScanResult, useLoad } from "@/components/ui";
 
 export default function Dashboard() {
   const { data, error, reload } = useLoad<any>("/api/dashboard");
   const bud = useLoad<any>("/api/budget");
-  const [busy, setBusy] = useState(""); const [err, setErr] = useState<any>(null); const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(""); const [err, setErr] = useState<any>(null); const [msg, setMsg] = useState(""); const [scan, setScan] = useState<any>(null);
   const act = async (k: string, fn: () => Promise<any>) => {
     setBusy(k); setErr(null);
     try { const r = await fn(); setMsg(JSON.stringify(r)); await reload(); } catch (e) { setErr(e); } finally { setBusy(""); }
@@ -32,14 +32,15 @@ export default function Dashboard() {
           <div className="row"><Badge kind={st?.scan_schedule_enabled ? "ok" : "info"}>{st?.scan_schedule_enabled ? `Mỗi ${st?.scan_interval_hours}h` : "Đang tắt"}</Badge>
             <button disabled={!!busy} onClick={() => act("sch", () => api("/api/settings", { method: "PATCH", json: { scan_schedule_enabled: !st?.scan_schedule_enabled } }))}>
               {st?.scan_schedule_enabled ? "Tắt" : "Bật"}</button></div>
-          <button style={{ marginTop: 8 }} disabled={!!busy} onClick={() => act("scan", () => api("/api/sources/scan", { method: "POST" }))}>
+          <button style={{ marginTop: 8 }} disabled={!!busy} onClick={() => act("scan", async () => { const r = await api("/api/sources/scan", { method: "POST" }); setScan(r); return null; })}>
             {busy === "scan" ? "Đang quét…" : "Quét tin ngay"}</button>
         </Card>
         <Card title="Ngân sách AI tháng này"><div className="kpi">${(bud.data?.spent_month_usd ?? 0).toFixed(2)} <span className="small muted">/ ${bud.data?.monthly_cap_usd ?? 50}</span></div>
           <p className="small muted">Hôm nay ${(bud.data?.spent_today_usd ?? 0).toFixed(2)} / ${(bud.data?.allowance_today_usd ?? 0).toFixed(2)} · {bud.data?.stories_today ?? 0}/{bud.data?.stories_per_day ?? 3} tin</p>
           <Link href="/agents">Bộ não AI & Ngân sách →</Link></Card>
       </div>
-      {msg && <pre className="small">{msg}</pre>}
+      <ScanResult r={scan} />
+      {msg && msg !== "null" && <pre className="small">{msg}</pre>}
       {data?.open_errors?.total > 0 && <div className={(data.open_errors.ERROR || 0) + (data.open_errors.CRITICAL || 0) > 0 ? "error row" : "hint row"}>
         <span>🐞 Tool đang có <b>{data.open_errors.total}</b> lỗi/cảnh báo chưa xử lý
           {(data.open_errors.ERROR || 0) + (data.open_errors.CRITICAL || 0) > 0 && <> (trong đó <b>{(data.open_errors.ERROR || 0) + (data.open_errors.CRITICAL || 0)}</b> lỗi)</>}.</span>
