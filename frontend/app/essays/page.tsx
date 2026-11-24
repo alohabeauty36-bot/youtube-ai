@@ -1,6 +1,6 @@
 "use client";
 import { Fragment, ReactNode, useCallback, useEffect, useState } from "react";
-import { api, API_BASE, fmtDate, getToken } from "@/lib/api";
+import { api, API_BASE, errorFromResponse, fmtDate, getToken } from "@/lib/api";
 import { Badge, Card, ErrorBox, useLoad } from "@/components/ui";
 
 const STATUS: Record<string, [string, "ok" | "warn" | "bad" | "info"]> = {
@@ -35,8 +35,9 @@ function Essay({ md }: { md: string }) {
 }
 
 async function download(id: string) {
-  const r = await fetch(`${API_BASE}/api/essays/${id}/export.md`, { headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {} });
-  if (!r.ok) throw new Error(await r.text());
+  const path = `/api/essays/${id}/export.md`;
+  const r = await fetch(`${API_BASE}${path}`, { headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {} });
+  if (!r.ok) throw await errorFromResponse(r, path);
   const url = URL.createObjectURL(await r.blob());
   const a = document.createElement("a");
   a.href = url; a.download = `bai-luan-${id.slice(0, 8)}.md`; a.click();

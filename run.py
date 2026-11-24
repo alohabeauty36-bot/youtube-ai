@@ -140,6 +140,22 @@ def port_busy(host: str, port: int) -> bool:
         return s.connect_ex(("127.0.0.1" if host in ("0.0.0.0", "") else host, port)) == 0
 
 
+def running_server_is_stale(url: str) -> bool:
+    """True nếu máy chủ đang chạy ở url là EV Studio nhưng mã trong bộ nhớ khác mã trên đĩa."""
+    import json
+
+    try:
+        with urllib.request.urlopen(url + "/api/health", timeout=2) as r:
+            info = json.loads(r.read().decode("utf-8"))
+    except (OSError, ValueError):
+        return False  # không phải EV Studio hoặc không trả lời → giữ thông báo cũ
+    sys.path.insert(0, str(BACKEND))
+    from ev_studio.build_info import code_fingerprint
+
+    # máy chủ quá cũ chưa có trường "build" cũng tính là bản cũ
+    return info.get("build") != code_fingerprint()
+
+
 def open_when_ready(url: str) -> None:
     for _ in range(120):
         try:
@@ -172,6 +188,13 @@ def main() -> None:
     os.environ["EVCS_TRUST_LOCALHOST"] = "1" if local_only else "0"
     url = f"http://localhost:{args.port}"
     if port_busy(args.host, args.port):
+        if running_server_is_stale(url):
+            say("=" * 64)
+            say(f"⚠️  Cổng {args.port} đang chạy máy chủ BẢN CŨ (trước khi cập nhật code).")
+            say("    Giao diện đã là bản mới nhưng API vẫn là bản cũ → các trang mới sẽ báo lỗi 404.")
+            say("    Cách sửa: tìm cửa sổ EV Studio đang chạy, bấm Ctrl+C (hoặc đóng cửa sổ), rồi mở lại start.bat.")
+            say("=" * 64)
+            return
         say(f"Cổng {args.port} đang được dùng — có thể ứng dụng đã chạy. Mở {url} hoặc dùng --port 8020.")
         if not args.no_browser:
             webbrowser.open(url)
