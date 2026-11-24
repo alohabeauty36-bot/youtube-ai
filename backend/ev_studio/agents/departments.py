@@ -14,6 +14,7 @@ class Department:
     max_tokens: int
     similarity_threshold: float  # trò phải viết giống thầy ít nhất mức này (ROUGE-1 F1) mới tính là đạt
     learns: bool = True  # có "trò" học thay thế thầy hay không
+    strategy_setting: str | None = None  # tên trường Settings chọn thầy riêng cho phòng (None = theo "Thầy chính")
 
 
 DEPARTMENTS: dict[str, Department] = {
@@ -25,6 +26,9 @@ DEPARTMENTS: dict[str, Department] = {
                             "model_script", 16000, 0.28),
     "bien_tap": Department("bien_tap", "Phòng Biên tập", "Sửa từng đoạn theo yêu cầu của chủ kênh",
                            "model_editor", 2000, 0.35),
+    "bai_luan": Department("bai_luan", "Phòng Bài luận",
+                           "Tự research web (miễn phí) rồi viết bài luận theo chủ đề, có trích nguồn; học cách viết của cả Claude lẫn ChatGPT",
+                           "model_essay", 9000, 0.30, strategy_setting="essay_teacher_strategy"),
     "hoc_tap": Department("hoc_tap", "Ban Đào tạo", "Định kỳ đúc kết bài học của các phòng thành sổ tay văn phong",
                           "model_editor", 3000, 0.0, learns=False),
 }
@@ -38,12 +42,21 @@ def teacher_model(settings, dept: Department) -> str:
     return m or settings.anthropic_model
 
 
-LEVELS = ["Học việc", "Tập sự", "Thành thạo", "Chuyên gia"]
+LEVELS = ["Học việc", "Tập sự", "Thành thạo", "Chuyên gia", "Bậc thầy"]
+MASTER = 4
 
 
-def level_of(recent: list[int], passes: int, graduated: bool) -> int:
+def level_of(recent: list[int], passes: int, graduated: bool, settings=None) -> int:
+    """0 Học việc → 1 Tập sự → 2 Thành thạo (tốt nghiệp, tự làm, thầy kiểm tra ngẫu nhiên)
+    → 3 Chuyên gia → 4 Bậc thầy (tự làm hoàn toàn; thầy chỉ được gọi khi bài của trò không qua QA)."""
     rate = (sum(recent) / len(recent)) if recent else 0.0
-    if graduated and passes >= 30 and rate >= 0.9:
+    if settings is not None:
+        m_pass, m_rate, full = settings.agent_master_min_passes, settings.agent_master_rate, settings.agent_graduation_window
+    else:
+        m_pass, m_rate, full = 40, 0.95, 20
+    if graduated and passes >= m_pass and rate >= m_rate and len(recent) >= full:
+        return MASTER
+    if graduated and passes >= min(30, m_pass) and rate >= 0.9:
         return 3
     if graduated:
         return 2

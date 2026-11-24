@@ -6,13 +6,27 @@ import { Badge, Card, ErrorBox, useLoad } from "@/components/ui";
 const usd = (v?: number | null, d = 2) => (v == null ? "—" : `$${Number(v).toFixed(d)}`);
 const pct = (v?: number | null) => (v == null ? "—" : `${Math.round(v * 100)}%`);
 const DEPT_NAME: Record<string, string> = {
-  san_tin: "Phòng Săn tin", nghien_cuu: "Phòng Nghiên cứu", bien_kich: "Phòng Biên kịch", bien_tap: "Phòng Biên tập", hoc_tap: "Ban Đào tạo",
+  san_tin: "Phòng Săn tin", nghien_cuu: "Phòng Nghiên cứu", bien_kich: "Phòng Biên kịch", bien_tap: "Phòng Biên tập", bai_luan: "Phòng Bài luận", hoc_tap: "Ban Đào tạo",
 };
+const STYLE_ROWS: [string, string][] = [["essays", "Số bài"], ["words", "Số từ"], ["sections", "Số phần (##)"], ["paragraphs", "Số đoạn"],
+  ["words_per_paragraph", "Từ / đoạn"], ["words_per_sentence", "Từ / câu"], ["citations_per_100w", "Trích dẫn / 100 từ"],
+  ["distinct_sources", "Số nguồn dùng"], ["counter_markers", "Dấu hiệu phản biện"]];
+const WRITERS: [string, string][] = [["anthropic", "Claude"], ["openai", "ChatGPT"], ["owner", "Chủ kênh sửa"], ["local", "Trò"]];
+
+function Styles({ st }: { st: Record<string, any> }) {
+  const cols = WRITERS.filter(([k]) => st[k]);
+  if (!cols.length) return <p className="small muted">Chưa có bài luận nào để so sánh cách viết.</p>;
+  return <details open><summary className="small">Cách viết của từng thầy (trò lấy trung bình của thầy làm mục tiêu)</summary>
+    <table className="small"><thead><tr><th></th>{cols.map(([k, l]) => <th key={k}>{l}</th>)}</tr></thead><tbody>
+      {STYLE_ROWS.map(([k, l]) => <tr key={k}><td>{l}</td>{cols.map(([w]) => <td key={w}>{st[w]?.[k] ?? "—"}</td>)}</tr>)}</tbody></table></details>;
+}
 const MODE_LABEL: Record<string, string> = { auto: "Tự động", teacher_only: "Chỉ nhờ thầy", student_only: "Chỉ trò tự làm" };
 
-function Bar({ used, cap }: { used: number; cap: number }) {
+function Bar({ used, cap, good }: { used: number; cap: number; good?: boolean }) {
+  // good: thanh "càng đầy càng tốt" (tỷ lệ đạt) → đỏ khi thấp; mặc định là thanh chi tiêu → đỏ khi gần trần
   const r = cap > 0 ? Math.min(1, used / cap) : 0;
-  return <div className="bar"><div className={r > 0.9 ? "bad" : r > 0.7 ? "warn" : ""} style={{ width: `${r * 100}%` }} /></div>;
+  const cls = good ? (r < 0.5 ? "bad" : r < 0.8 ? "warn" : "") : (r > 0.9 ? "bad" : r > 0.7 ? "warn" : "");
+  return <div className="bar"><div className={cls} style={{ width: `${r * 100}%` }} /></div>;
 }
 
 export default function Agents() {
@@ -70,28 +84,31 @@ export default function Agents() {
         </div>
         <p className="small muted">Mỗi đề bài: <b>bộ nhớ</b> (đề cũ, $0) → <b>trò tự làm</b> nếu phòng đã tốt nghiệp ($0) → <b>thầy</b> (tốn tiền, luôn qua Ban Tài chính).
           Mỗi lần thầy làm, trò làm thử cùng đề để được chấm. Tốt nghiệp khi đạt ≥ {pct(A?.graduation?.rate)} trong {A?.graduation?.window} lần gần nhất (tối thiểu {A?.graduation?.min} lần);
-          sau đó vẫn gửi thầy kiểm tra ngẫu nhiên {pct(A?.graduation?.audit_rate)} số việc. Kịch bản do trò viết vẫn phải qua Script QA và chủ kênh duyệt như thường.</p>
+          sau đó vẫn gửi thầy kiểm tra ngẫu nhiên {pct(A?.graduation?.audit_rate)} số việc. Lên <b>Bậc thầy</b> khi có ≥ {A?.graduation?.master_min_passes} lần đạt và
+          tỷ lệ đạt ≥ {pct(A?.graduation?.master_rate)}: phòng tự làm, chỉ gửi thầy {pct(A?.graduation?.master_audit_rate)} số việc (và khi bài của trò không qua QA). Kịch bản do trò viết vẫn phải qua Script QA và chủ kênh duyệt như thường.</p>
         {!A?.student?.configured && <p className="small">Muốn các phòng tự viết không tốn tiền: cài <b>Ollama</b> trên máy, chạy <code>ollama pull {A?.student?.model}</code>, rồi nhập địa chỉ <code>http://localhost:11434</code> trong Thiết lập → Bộ não phòng ban.</p>}
       </Card>
 
       <div className="grid g2">
         {(A?.departments || []).map((d: any) => (
-          <Card key={d.code} title={<>{d.name} <Badge kind={d.graduated ? "ok" : "info"}>{d.learns ? d.level_name : "Không cần học thay"}</Badge></>}
+          <Card key={d.code} title={<>{d.name} <Badge kind={d.level >= 4 ? "master" : d.graduated ? "ok" : "info"}>{d.learns ? (d.level >= 4 ? `★ ${d.level_name}` : d.level_name) : "Không cần học thay"}</Badge></>}
             right={d.learns && <select value={d.mode} disabled={!!busy} onChange={e => act(`m-${d.code}`, () => api(`/api/agents/${d.code}/mode`, { method: "POST", json: { mode: e.target.value } }))}>
               {Object.entries(MODE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>}>
-            <p className="small muted">{d.role} · thầy Claude: <code>{d.teacher_model}</code></p>
+            <p className="small muted">{d.role} · thầy Claude: <code>{d.teacher_model}</code>
+              {d.teacher_strategy && <> · {d.teacher_strategy === "alternate" ? "luân phiên Claude và ChatGPT" : d.teacher_strategy}</>}</p>
             {d.learns && <>
               <div className="row small">
                 <span>Tỷ lệ trò đạt: <b>{pct(d.pass_rate)}</b> ({d.window} lần gần nhất)</span>
                 <span>Giống thầy: <b>{pct(d.similarity_avg)}</b></span>
               </div>
-              <Bar used={d.pass_rate || 0} cap={1} />
+              <Bar used={d.pass_rate || 0} cap={1} good />
             </>}
             <table className="small"><tbody>
               <tr><td>Lần nhờ thầy</td><td>{d.teacher_calls}</td><td>Lấy lại từ bộ nhớ</td><td>{d.cache_hits}</td></tr>
               <tr><td>Trò làm thử / đạt</td><td>{d.student_attempts} / {d.student_passes}</td><td>Trò làm thay thầy</td><td>{d.student_live}</td></tr>
               <tr><td>Ký ức</td><td>{Object.entries(d.memories || {}).map(([k, v]) => `${k}: ${v}`).join(" · ") || "—"}</td><td>Đã tiết kiệm</td><td>{usd(d.saved_usd, 3)}</td></tr>
             </tbody></table>
+            {d.code === "bai_luan" && d.styles && <Styles st={d.styles} />}
             {d.style_guide && <details><summary className="small">Sổ tay văn phong</summary><pre className="small">{d.style_guide}</pre></details>}
             {d.lessons?.length > 0 && <details><summary className="small">Bài học gần đây ({d.lessons.length})</summary>
               <ul className="small">{d.lessons.map((l: string, i: number) => <li key={i}>{l}</li>)}</ul></details>}

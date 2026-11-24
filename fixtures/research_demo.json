@@ -1,0 +1,40 @@
+{
+  "_note": "TƯ LIỆU GIẢ LẬP (DEMO) cho Phòng Bài luận. Số liệu chỉ để chạy thử, KHÔNG dùng làm dữ kiện thật.",
+  "pages": [
+    {
+      "title": "[DEMO] Xe điện là gì và hoạt động thế nào",
+      "url": "https://demo.invalid/xe-dien-tong-quan",
+      "publisher": "Tư liệu DEMO",
+      "keywords": ["xe điện", "ô tô điện", "động cơ điện", "pin", "tổng quan"],
+      "text": "Xe điện là phương tiện dùng động cơ điện thay cho động cơ đốt trong, lấy năng lượng từ bộ pin sạc lại được. Khi người lái đạp ga, bộ điều khiển lấy điện từ pin và cấp cho động cơ, mô-men xoắn có ngay từ vòng tua thấp nên xe tăng tốc êm và nhanh.\nSo với xe xăng, xe điện có ít chi tiết chuyển động hơn: không có hộp số nhiều cấp, không có bugi, không cần thay dầu máy định kỳ. Vì vậy chi phí bảo dưỡng thường thấp hơn, dù lốp và phanh vẫn cần kiểm tra như mọi loại xe.\nPhanh tái sinh là tính năng biến động năng khi giảm tốc thành điện để nạp lại vào pin. Tính năng này đặc biệt hữu ích khi đi trong phố đông, nơi xe phải dừng và chạy liên tục.\nNhược điểm lớn nhất của xe điện hiện nay là thời gian sạc lâu hơn đổ xăng và quãng đường mỗi lần sạc phụ thuộc mạnh vào nhiệt độ, tốc độ và cách lái."
+    },
+    {
+      "title": "[DEMO] Pin LFP và pin NMC: khác nhau ở đâu",
+      "url": "https://demo.invalid/pin-lfp-nmc",
+      "publisher": "Tư liệu DEMO",
+      "keywords": ["pin", "LFP", "NMC", "lithium", "tuổi thọ pin", "xe điện"],
+      "text": "Hai loại pin lithium phổ biến trên xe điện là LFP (lithium sắt phốt phát) và NMC (niken mangan coban). Pin NMC có mật độ năng lượng cao hơn nên cùng khối lượng xe đi được xa hơn, nhưng giá thành cao và nhạy cảm hơn với nhiệt.\nPin LFP rẻ hơn, bền hơn và an toàn hơn về nhiệt. Theo tư liệu demo này, pin LFP có thể chịu khoảng 3000 chu kỳ sạc xả trước khi dung lượng giảm đáng kể, trong khi pin NMC thường ở mức khoảng 1500 chu kỳ.\nNhà sản xuất thường khuyên sạc pin LFP đầy 100% định kỳ để hệ thống quản lý pin ước tính chính xác dung lượng, còn với pin NMC nên giữ trong khoảng 20 đến 80% khi dùng hằng ngày.\nThời tiết nóng ẩm như ở Việt Nam làm pin lão hoá nhanh hơn nếu xe thường xuyên đỗ dưới nắng và sạc nhanh liên tục."
+    },
+    {
+      "title": "[DEMO] Hạ tầng trạm sạc tại các đô thị",
+      "url": "https://demo.invalid/tram-sac-do-thi",
+      "publisher": "Tư liệu DEMO",
+      "keywords": ["trạm sạc", "sạc nhanh", "hạ tầng", "chung cư", "xe điện"],
+      "text": "Hạ tầng sạc là yếu tố quyết định người dân có chuyển sang xe điện hay không. Có ba hình thức sạc chính: sạc tại nhà bằng ổ cắm hoặc bộ sạc treo tường, sạc ở nơi làm việc và trung tâm thương mại, và sạc nhanh DC dọc các tuyến quốc lộ.\nNgười sống ở chung cư gặp khó nhất vì nhiều toà nhà chưa cho phép lắp bộ sạc riêng ở tầng hầm do lo ngại phòng cháy chữa cháy. Một số ban quản lý đã thử bố trí khu sạc tập trung có camera và thiết bị báo cháy.\nTheo tư liệu demo, một lần sạc nhanh từ 10% lên 70% mất khoảng 30 phút, còn sạc chậm tại nhà qua đêm mất khoảng 8 giờ cho cùng lượng điện.\nCác chuyên gia cho rằng mật độ trạm sạc cần đi trước nhu cầu một bước, nếu không người mua sẽ lo lắng về quãng đường và trì hoãn quyết định."
+    },
+    {
+      "title": "[DEMO] Chi phí sở hữu xe điện so với xe xăng",
+      "url": "https://demo.invalid/chi-phi-so-huu",
+      "publisher": "Tư liệu DEMO",
+      "keywords": ["chi phí", "giá xe", "tiền điện", "bảo dưỡng", "khấu hao", "xe điện", "xe xăng"],
+      "text": "Giá mua ban đầu của xe điện thường cao hơn xe xăng cùng phân khúc, chủ yếu do giá pin. Tuy nhiên tổng chi phí sở hữu trong nhiều năm có thể thấp hơn nhờ tiền năng lượng và bảo dưỡng rẻ.\nTrong ví dụ demo, một chiếc xe điện chạy 100 km tốn khoảng một phần ba số tiền nhiên liệu so với xe xăng tương đương nếu sạc tại nhà theo giá điện sinh hoạt. Nếu chủ yếu dùng trạm sạc nhanh công cộng, khoản tiết kiệm này giảm đi đáng kể.\nGiá trị bán lại là ẩn số lớn: công nghệ pin thay đổi nhanh khiến người mua xe cũ lo ngại về độ chai pin, nên xe điện đã qua sử dụng có thể mất giá nhanh hơn.\nChính sách ưu đãi như miễn lệ phí trước bạ hay giảm phí đăng ký giúp thu hẹp khoảng cách giá ban đầu, nhưng các ưu đãi này thường có thời hạn."
+    },
+    {
+      "title": "[DEMO] Xe điện có thật sự sạch hơn?",
+      "url": "https://demo.invalid/tac-dong-moi-truong",
+      "publisher": "Tư liệu DEMO",
+      "keywords": ["môi trường", "khí thải", "điện than", "tái chế pin", "vòng đời", "xe điện"],
+      "text": "Xe điện không phát thải tại ống xả, giúp giảm ô nhiễm không khí cục bộ ở đô thị. Nhưng để đánh giá đầy đủ cần xét cả vòng đời: khai thác khoáng sản làm pin, sản xuất xe, nguồn điện dùng để sạc và xử lý pin hết hạn.\nNếu lưới điện phụ thuộc nhiều vào nhiệt điện than, lợi ích giảm phát thải carbon của xe điện nhỏ hơn so với nơi dùng nhiều điện mặt trời, điện gió hay thuỷ điện. Dù vậy, phần lớn các phân tích vòng đời vẫn cho thấy xe điện có lợi thế khi dùng đủ lâu.\nTái chế pin đang là bài toán mở. Pin hết khả năng dùng cho xe vẫn có thể làm pin lưu trữ năng lượng cho nhà ở hoặc trạm sạc trước khi được tái chế để thu hồi lithium, niken và coban.\nNhững người phản biện cho rằng khuyến khích giao thông công cộng và xe đạp mới là giải pháp gốc, còn thay xe xăng bằng xe điện chỉ giải quyết một phần vấn đề ùn tắc và ô nhiễm."
+    }
+  ]
+}

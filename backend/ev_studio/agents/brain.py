@@ -23,7 +23,7 @@ from typing import Any, Callable
 from ..config import Settings, get_settings
 from ..errors import BlockedByCredentials, GateBlocked, RetryableError
 from . import budget, memory, pricing
-from .departments import DEPARTMENTS, Department, teacher_model
+from .departments import DEPARTMENTS, MASTER, Department, level_of, teacher_model
 
 log = logging.getLogger(__name__)
 _shadow_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="agent-shadow")
@@ -43,6 +43,7 @@ class Task:
     max_tokens: int | None = None
     use_cache: bool = True
     meta: dict = field(default_factory=dict)
+    student_extra: str = ""  # hướng dẫn thêm chỉ dành cho trò (ví dụ mục tiêu cấu trúc rút ra từ bài của thầy)
 
 
 @dataclass
@@ -72,6 +73,7 @@ class Brain:
         with SessionLocal() as db:
             skill = get_skill(db, dept.code)
             mode, graduated = skill.mode, skill.graduated
+            level = level_of(list(skill.recent or []), skill.student_passes, graduated, self.s)
             if task.use_cache:
                 hit = memory.recall_exact(db, dept.code, key)
                 if hit is not None:
@@ -91,13 +93,14 @@ class Brain:
         if mode == "student_only" and not student_ok:
             raise BlockedByCredentials(f"{dept.name} đặt 'chỉ trò tự làm' nhưng chưa kết nối model chạy trên máy (Ollama)")
 
-        # 2. trò tự làm
-        if student_ok and (mode == "student_only" or (mode == "auto" and graduated and self.rng.random() >= self.s.agent_audit_rate)):
+        # 2. trò tự làm. Bậc thầy: không gửi thầy kiểm tra ngẫu nhiên nữa (agent_master_audit_rate, mặc định 0)
+        audit_rate = self.s.agent_master_audit_rate if level >= MASTER else self.s.agent_audit_rate
+        if student_ok and (mode == "student_only" or (mode == "auto" and graduated and self.rng.random() >= audit_rate)):
             att = self._student(dept, task, context, examples)
             self._score(dept.code, att, live=True, saved=self._teacher_price_guess(dept, task) if att.ok else 0.0)
             if att.ok:
                 mid = self._remember(dept, task, key, att.result, "local", self.student.model, quality=0.8)
-                return att.result, {**ZERO, "source": "local", "model": self.student.model, "memory_id": mid}
+                return att.result, {**ZERO, "source": "local", "model": self.student.model, "memory_id": mid, "level": level}
             if mode == "student_only":
                 raise GateBlocked([f"{dept.name} (trò tự làm) chưa đạt: {p}" for p in att.problems[:3]])
 
@@ -131,6 +134,9 @@ class Brain:
 
     def pick_teacher(self, dept: Department) -> tuple[str, Any]:
         strat = self.s.teacher_strategy
+        if dept.strategy_setting:  # phòng có thầy riêng (Phòng Bài luận mặc định luân phiên Claude/ChatGPT)
+            own = getattr(self.s, dept.strategy_setting, "inherit") or "inherit"
+            strat = strat if own == "inherit" else own
         order = {"anthropic": ["anthropic", "openai"], "openai": ["openai", "anthropic"]}.get(strat)
         if strat == "alternate":
             from ..db import SessionLocal
@@ -181,7 +187,8 @@ class Brain:
 
     def _student(self, dept: Department, task: Task, context: str, examples: str, teacher_result: Any = None) -> Attempt:
         try:
-            raw, usage = self.student.complete_json(task.system + context + examples, task.user, task.max_tokens or dept.max_tokens)
+            raw, usage = self.student.complete_json(task.system + context + examples + task.student_extra, task.user,
+                                                    task.max_tokens or dept.max_tokens)
             result = task.validate(raw)
         except Exception as e:  # noqa: BLE001
             return Attempt(False, problems=[f"{type(e).__name__}: {str(e)[:200]}"])
@@ -264,6 +271,8 @@ def build_context(db, dept: Department, query: str) -> str:
 
 def build_examples(db, dept: Department, query: str) -> str:
     """Chỉ dành cho trò: 1–2 câu trả lời tốt nhất của thầy (ưu tiên bản chủ kênh đã duyệt) cho đề gần giống."""
+    if dept.code == "bai_luan":
+        return _essay_examples(db, query)
     rows = memory.search(db, dept.code, query, kinds=["answer"], k=2)
     rows = [r for r in rows if r.source in ("anthropic", "openai") or r.approved]
     if not rows:
@@ -274,3 +283,26 @@ def build_examples(db, dept: Department, query: str) -> str:
     kb = ("\n## KIẾN THỨC ĐÃ XÁC MINH LIÊN QUAN\n" + "\n".join(f"- {k.text[:200]}" for k in know)) if know else ""
     return ("\n\n## VÍ DỤ ĐẦU RA TỐT (chỉ học CẤU TRÚC và VĂN PHONG; KHÔNG chép dữ kiện, chỉ dùng dữ kiện trong đề bài)\n"
             + "\n---\n".join(blocks) + kb)
+
+
+def _essay_examples(db, query: str) -> str:
+    """Phòng Bài luận: một bài mẫu của MỖI thầy (Claude, ChatGPT; bản chủ kênh duyệt được ưu tiên) cho chủ đề gần nhất,
+    để trò thấy hai cách viết khác nhau. Không kèm kho kiến thức: bài luận chỉ được dùng dữ kiện trong hồ sơ tư liệu."""
+    rows = memory.search(db, "bai_luan", query, kinds=["answer"], k=8)
+    if not rows:  # chủ đề mới hoàn toàn → lấy bài tốt gần đây nhất
+        rows = memory.search(db, "bai_luan", "", kinds=["answer"], k=8)
+    picked: dict[str, Any] = {}
+    for r in sorted(rows, key=lambda r: (not r.approved, -(r.quality or 0))):
+        who = "owner" if r.approved else r.source
+        if who in ("anthropic", "openai", "owner") and (r.quality or 0) >= 0.9 and who not in picked:
+            picked[who] = r
+    if not picked:
+        return ""
+    label = {"anthropic": "Claude", "openai": "ChatGPT", "owner": "bản chủ kênh đã duyệt"}
+    blocks = []
+    for who, r in list(picked.items())[:2]:
+        resp = r.response or {}
+        body = f"# {resp.get('title', '')}\n{resp.get('essay_markdown', '')}" if isinstance(resp, dict) else memory.dumps(resp)
+        blocks.append(f"### Bài mẫu ({label.get(who, who)})\n{body[:3500]}")
+    return ("\n\n## BÀI LUẬN MẪU CỦA THẦY (chỉ học CẤU TRÚC, CÁCH LẬP LUẬN, CÁCH TRÍCH NGUỒN; KHÔNG chép câu chữ hay dữ kiện)\n"
+            + "\n\n".join(blocks))

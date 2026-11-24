@@ -16,6 +16,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <Link href="/">Bảng điều khiển</Link>
               <Link href="/news">Săn tin</Link>
               <Link href="/stories">Video đang làm</Link>
+              <Link href="/essays">Bài luận</Link>
               <Link href="/agents">Bộ não AI & Ngân sách</Link>
               <Link href="/analytics">Phân tích & chi phí</Link>
               <Link href="/errors">Nhật ký lỗi</Link>

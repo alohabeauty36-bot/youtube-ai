@@ -67,6 +67,7 @@ class FakeStudent:
 
     def complete_json(self, system, user, max_tokens):
         self.calls += 1
+        self.last_system = system
         a = self.answer(system, user) if callable(self.answer) else self.answer
         return a, {"input_tokens": 0, "output_tokens": 0, "model": self.model, "provider": "local"}
 

@@ -878,7 +878,7 @@ def agents_status(db: Session = Depends(get_db), actor: Actor = Depends(current_
     for code, d in DEPARTMENTS.items():
         sk = get_skill(db, code)
         recent = list(sk.recent or [])
-        lv = level_of(recent, sk.student_passes, sk.graduated)
+        lv = level_of(recent, sk.student_passes, sk.graduated, s)
         out.append({
             "code": code, "name": d.name, "role": d.role, "teacher_model": teacher_model(s, d), "learns": d.learns,
             "mode": sk.mode, "level": lv, "level_name": LEVELS[lv], "graduated": sk.graduated,
@@ -889,13 +889,22 @@ def agents_status(db: Session = Depends(get_db), actor: Actor = Depends(current_
             "lessons": lessons(db, code, 5), "style_guide": style_guide(db, code),
             "last_reflect_at": sk.last_reflect_at,
         })
+    from ..agents.essay import teacher_styles
+
+    styles = teacher_styles(db)
+    for d in out:
+        if d["code"] == "bai_luan":
+            d["styles"] = styles
+            d["teacher_strategy"] = s.essay_teacher_strategy
     db.commit()
     return {"departments": out, "finance": FINANCE, "teacher_strategy": s.teacher_strategy,
             "teachers": {"anthropic": bool(s.anthropic_api_key), "openai": bool(s.openai_api_key and s.openai_model)},
             "student": {"configured": bool(s.local_llm_url), "available": student_ok, "model": s.local_llm_model,
                         "url": s.local_llm_url},
             "graduation": {"window": s.agent_graduation_window, "min": s.agent_graduation_min,
-                           "rate": s.agent_graduation_rate, "audit_rate": s.agent_audit_rate}}
+                           "rate": s.agent_graduation_rate, "audit_rate": s.agent_audit_rate,
+                           "master_min_passes": s.agent_master_min_passes, "master_rate": s.agent_master_rate,
+                           "master_audit_rate": s.agent_master_audit_rate}}
 
 
 class AgentModeIn(BaseModel):
@@ -940,6 +949,131 @@ def agent_memories(code: str, kind: str | None = None, limit: int = Query(30, le
     return [{"id": m.id, "at": m.created_at, "kind": m.kind, "source": m.source, "model": m.model, "quality": m.quality,
              "approved": m.approved, "uses": m.uses, "story_id": m.story_id, "text": m.text[:600]}
             for m in db.scalars(q.order_by(AgentMemory.id.desc()).limit(limit))]
+
+
+# ---------------------------------------------------------------------- Phòng Bài luận
+
+
+class EssayIn(BaseModel):
+    topic: str = Field(min_length=3, max_length=500)
+    requirements: str = Field("", max_length=3000)
+    words: int | None = Field(None, ge=300, le=3000)
+    style: Literal["nghi_luan", "phan_tich", "thuyet_minh", "so_sanh"] = "nghi_luan"
+    language: Literal["vi", "en"] | None = None
+    wait: bool = False  # chạy xong mới trả về (dùng cho test/CLI); mặc định chạy nền
+
+
+def _essay_out(e, full: bool = False) -> dict:
+    d = {"id": e.id, "created_at": e.created_at, "updated_at": e.updated_at, "topic": e.topic, "requirements": e.requirements,
+         "words": e.words, "style": e.style, "language": e.language, "status": e.status, "stage_note": e.stage_note,
+         "title": e.title, "source": e.source, "model": e.model, "usd": round(e.usd or 0, 4), "is_demo": e.is_demo,
+         "error": e.error, "qa_ok": (e.qa or {}).get("ok"), "words_written": ((e.qa or {}).get("metrics") or {}).get("words"),
+         "sources_count": len((e.dossier or {}).get("sources", []))}
+    if full:
+        d.update({"markdown": e.markdown, "content": e.content, "qa": e.qa, "dossier": e.dossier, "feedback": e.feedback})
+    return d
+
+
+def _essay_or_404(db, eid: str):
+    from ..models import Essay
+
+    e = db.get(Essay, eid)
+    if e is None:
+        raise HTTPException(404, "Không có bài luận này")
+    return e
+
+
+@app.post("/api/essays")
+def essay_create(body: EssayIn, db: Session = Depends(get_db), actor: Actor = Depends(current_actor)):
+    from ..agents.essay import run_essay
+    from ..models import Essay
+    from ..workers.executor import submit_callable
+
+    s = get_settings()
+    e = Essay(topic=body.topic.strip(), requirements=body.requirements.strip(), words=body.words or s.essay_default_words,
+              style=body.style, language=body.language or s.essay_language, status="queued", stage_note="Đang chờ")
+    db.add(e)
+    audit(db, actor.name, "essay.create", "essay", e.id, topic=e.topic[:120])
+    db.commit()
+    if body.wait:
+        run_essay(e.id)
+        db.expire_all()
+    else:
+        submit_callable(f"essay:{e.id}", lambda: run_essay(e.id))
+    return _essay_out(db.get(Essay, e.id), full=body.wait)
+
+
+@app.get("/api/essays")
+def essay_list(limit: int = Query(50, le=200), db: Session = Depends(get_db), actor: Actor = Depends(current_actor)):
+    from ..models import Essay
+
+    return [_essay_out(e) for e in db.scalars(select(Essay).order_by(Essay.created_at.desc()).limit(limit))]
+
+
+@app.get("/api/essays/{eid}")
+def essay_get(eid: str, db: Session = Depends(get_db), actor: Actor = Depends(current_actor)):
+    return _essay_out(_essay_or_404(db, eid), full=True)
+
+
+@app.get("/api/essays/{eid}/export.md")
+def essay_export(eid: str, db: Session = Depends(get_db), actor: Actor = Depends(current_actor)):
+    from fastapi.responses import Response
+
+    from ..agents.essay import export_markdown
+
+    e = _essay_or_404(db, eid)
+    if not e.markdown:
+        raise HTTPException(409, "Bài luận chưa viết xong")
+    return Response(export_markdown(e), media_type="text/markdown; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="bai-luan-{e.id[:8]}.md"'})
+
+
+@app.post("/api/essays/{eid}/rerun")
+def essay_rerun(eid: str, db: Session = Depends(get_db), actor: Actor = Depends(current_actor)):
+    from ..agents.essay import run_essay
+    from ..workers.executor import submit_callable
+
+    e = _essay_or_404(db, eid)
+    if e.status in ("queued", "researching", "writing"):
+        raise HTTPException(409, "Bài luận đang chạy")
+    e.status, e.stage_note, e.error = "queued", "Đang chờ chạy lại", None
+    audit(db, actor.name, "essay.rerun", "essay", e.id)
+    db.commit()
+    submit_callable(f"essay:{e.id}", lambda: run_essay(e.id))
+    return _essay_out(e)
+
+
+class EssayReviewIn(BaseModel):
+    action: Literal["approve", "reject", "feedback"]
+    note: str = Field("", max_length=2000)
+    markdown: str | None = Field(None, max_length=60000)  # bản chủ kênh tự sửa (tuỳ chọn, khi duyệt)
+
+
+@app.post("/api/essays/{eid}/review")
+def essay_review(eid: str, body: EssayReviewIn, db: Session = Depends(get_db), actor: Actor = Depends(require_owner)):
+    from ..agents import learning
+
+    e = _essay_or_404(db, eid)
+    if not e.markdown:
+        raise HTTPException(409, "Bài luận chưa viết xong")
+    if body.action == "approve":
+        learning.on_essay_approved(db, e, body.markdown)
+        if body.markdown and body.markdown.strip():
+            e.markdown = body.markdown.strip()
+            e.content = {**(e.content or {}), "essay_markdown": e.markdown}
+        e.status = "approved"
+    elif body.action == "reject":
+        learning.on_essay_rejected(db, e, body.note)
+        e.status = "rejected"
+    else:
+        if not body.note.strip():
+            raise HTTPException(422, "Nhập nội dung góp ý")
+        learning.on_essay_feedback(db, e, body.note)
+    if body.note.strip():
+        e.feedback = ((e.feedback + "\n") if e.feedback else "") + body.note.strip()
+    audit(db, actor.name, f"essay.{body.action}", "essay", e.id)
+    db.commit()
+    return _essay_out(e, full=True)
 
 
 @app.get("/api/analytics")

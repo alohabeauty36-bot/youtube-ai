@@ -72,6 +72,23 @@ class Settings(BaseSettings):
     agent_graduation_min: int = 10
     agent_graduation_rate: float = 0.8
     agent_audit_rate: float = 0.15  # sau khi tốt nghiệp vẫn nhờ thầy chấm ngẫu nhiên 15% số việc
+    # cấp Bậc thầy: tốt nghiệp + đủ số lần đạt + tỷ lệ đạt rất cao → tự làm, không gửi thầy kiểm tra nữa
+    agent_master_min_passes: int = 40
+    agent_master_rate: float = 0.95
+    agent_master_audit_rate: float = 0.0
+
+    # --- Phòng Bài luận: tự research web + viết bài luận theo chủ đề ---
+    model_essay: str = "claude-sonnet-5-5"
+    essay_teacher_strategy: Literal["inherit", "anthropic", "openai", "alternate"] = "alternate"  # học cả Claude lẫn ChatGPT
+    essay_language: str = "vi"
+    essay_default_words: int = 1200
+    research_search_provider: Literal["auto", "wikipedia", "searxng", "brave", "fixture"] = "auto"
+    research_online_in_demo: bool = False  # DEMO mặc định dùng tư liệu giả lập; bật để DEMO cũng tìm trên mạng thật
+    research_wiki_langs: str = "vi,en"
+    searxng_url: str = ""  # SearXNG tự cài, ví dụ http://localhost:8888
+    brave_api_key: SecretStr | None = None
+    research_max_sources: int = 8
+    research_max_fetch: int = 10
 
     # --- TTS ---
     tts_provider: Literal["auto", "demo", "vieneu_local", "vieneu_http"] = "auto"

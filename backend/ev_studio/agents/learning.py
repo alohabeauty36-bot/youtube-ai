@@ -129,3 +129,44 @@ def memory_stats(db) -> dict[str, dict[str, int]]:
     for d, k, n in db.execute(select(M.department, M.kind, func.count(M.id)).group_by(M.department, M.kind)):
         stats.setdefault(d, {})[k] = int(n)
     return stats
+
+
+# ------------------------------------------------------------------ Phòng Bài luận
+
+
+def on_essay_approved(db, essay, edited_markdown: str | None = None) -> None:
+    """Chủ kênh duyệt bài luận: bản này (hoặc bản chủ kênh đã sửa) thành bài mẫu tốt nhất cho cả thầy lẫn trò."""
+    from ..models import AgentMemory
+
+    if essay.memory_id:
+        m = db.get(AgentMemory, essay.memory_id)
+        if m is not None:
+            m.approved, m.quality = True, 1.0
+    if edited_markdown and edited_markdown.strip() and edited_markdown.strip() != (essay.markdown or "").strip():
+        content = {**(essay.content or {}), "essay_markdown": edited_markdown.strip()}
+        memory.remember(db, "bai_luan", "answer", key=memory.key_hash("owner-essay", essay.id), text=memory.flatten_text(content),
+                        response=content, request=essay.topic, source="owner", model="owner-edited", quality=1.0, approved=True,
+                        dedupe=False)
+        memory.add_lesson(db, "bai_luan", f"Chủ kênh đã tự sửa bài “{(essay.title or essay.topic)[:80]}” trước khi duyệt: "
+                                          "học theo bản đã sửa.", source="owner")
+
+
+def on_essay_feedback(db, essay, note: str) -> None:
+    if note and note.strip():
+        memory.add_lesson(db, "bai_luan", f"Chủ kênh góp ý bài luận: {note.strip()}", source="owner")
+
+
+def on_essay_rejected(db, essay, note: str | None) -> None:
+    from ..models import AgentMemory
+
+    if essay.memory_id:
+        m = db.get(AgentMemory, essay.memory_id)
+        if m is not None:
+            m.quality = -1.0  # không trả lại từ bộ nhớ, không dùng làm bài mẫu
+    if note:
+        memory.add_lesson(db, "bai_luan", f"Chủ kênh loại bài luận vì: {note.strip()}", source="owner")
+
+
+def on_essay_qa_failed(db, problems: list[str]) -> None:
+    for p in problems[:3]:
+        memory.add_lesson(db, "bai_luan", f"Bài luận từng trượt QA vì: {p}", source="system")

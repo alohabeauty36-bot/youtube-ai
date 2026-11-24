@@ -25,10 +25,11 @@ from . import pricing
 
 # phần trăm trần tháng dành cho từng phòng ban (tổng = 1.0)
 DEPARTMENT_SHARES: dict[str, float] = {
-    "san_tin": 0.15,
-    "nghien_cuu": 0.25,
-    "bien_kich": 0.50,
-    "bien_tap": 0.07,
+    "san_tin": 0.14,
+    "nghien_cuu": 0.22,
+    "bien_kich": 0.45,
+    "bien_tap": 0.06,
+    "bai_luan": 0.10,  # bài luận theo chủ đề: ~4,75 USD/tháng ≈ 50–70 bài do thầy viết; Bậc thầy thì $0
     "hoc_tap": 0.03,
 }
 DEFAULT_STORY_COST = 0.35  # ước tính ban đầu khi chưa có dữ liệu thật

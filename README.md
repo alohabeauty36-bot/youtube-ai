@@ -67,7 +67,7 @@ Mặc định **50 USD/tháng** cho Claude + ChatGPT (chỉnh ở **Thiết lậ
 |---|---|---|
 | Tháng | 50 USD, giữ lại 5% phòng sai số → chi tối đa 47,5 USD | cứng |
 | Ngày | phần còn lại của tháng ÷ số ngày còn lại, **không quá 2× bình quân** (~3,2 USD) | chống một ngày tiêu quá tay |
-| Phòng ban | Săn tin 15%, Nghiên cứu 25%, Biên kịch 50%, Biên tập 7%, Đào tạo 3% | một phòng không ăn hết phần của phòng khác |
+| Phòng ban | Săn tin 14%, Nghiên cứu 22%, Biên kịch 45%, Biên tập 6%, Bài luận 10%, Đào tạo 3% | một phòng không ăn hết phần của phòng khác |
 | Mỗi video | 0,75 USD (đủ cho ResearchPack + kịch bản + 3 lần viết lại) | |
 | Số tin | Autopilot tối đa **3 tin/ngày**, chỉ mở tin mới khi còn đủ tiền cho một video | |
 
@@ -78,12 +78,14 @@ Cách tiết kiệm đã bật sẵn: Phòng Săn tin dùng **Claude Haiku 5.5**
 **Ước tính** (bảng giá 11/2026, chưa đo với key thật): một video khoảng 0,25–0,35 USD (ResearchPack ~0,04 + kịch bản ~0,12 + trung bình một lần viết lại), tách claim ~0,001 USD/bài. 3 video/ngày × 30 ngày ≈ **25–32 USD/tháng**, dưới trần 50 USD.
 
 ### Bộ não phòng ban — học từ Claude/ChatGPT rồi tự viết
-Mỗi phòng (Săn tin, Nghiên cứu, Biên kịch, Biên tập, Ban Đào tạo) là một bộ não độc lập: bộ nhớ riêng, bài học riêng, hồ sơ năng lực riêng, trần ngân sách riêng. Mỗi đề bài đi theo thứ tự:
+Mỗi phòng (Săn tin, Nghiên cứu, Biên kịch, Biên tập, Bài luận, Ban Đào tạo) là một bộ não độc lập: bộ nhớ riêng, bài học riêng, hồ sơ năng lực riêng, trần ngân sách riêng. Mỗi đề bài đi theo thứ tự:
 
 1. **Bộ nhớ** — đề y hệt đã hỏi thầy → dùng lại, $0.
 2. **Trò tự làm** — model mã nguồn mở chạy trên máy bạn qua [Ollama](https://ollama.com) (mặc định `qwen2.5:7b-instruct`), $0. Chỉ khi phòng đã **tốt nghiệp**; vẫn gửi thầy kiểm tra ngẫu nhiên 15% số việc.
 3. **Thầy** — Claude (hoặc ChatGPT nếu bật, có thể luân phiên cả hai), tốn tiền, luôn qua Ban Tài chính. Hết ngân sách → nhờ trò; trò không làm được → dừng.
 4. **Học** — câu trả lời của thầy được lưu. Trò làm thử cùng đề (miễn phí, chạy nền) và được chấm: đúng schema, qua QA nghiệp vụ, nội dung đủ giống thầy. Đạt ≥ 80% trong 20 lần gần nhất (tối thiểu 10) → tốt nghiệp. Trượt nhiều → tự hạ cấp.
+
+Cấp bậc: Học việc → Tập sự → Thành thạo (tốt nghiệp) → Chuyên gia → **Bậc thầy** (≥ 40 lần đạt, tỷ lệ đạt ≥ 95% trên đủ 20 lần gần nhất). Ở cấp Bậc thầy phòng tự làm hoàn toàn: không gửi thầy kiểm tra ngẫu nhiên nữa (`agent_master_audit_rate`, mặc định 0); thầy chỉ được gọi khi bài của trò không qua QA. Đặt phòng ở *Chỉ trò tự làm* nếu muốn không bao giờ gọi thầy.
 
 Nguồn học khác, không tốn tiền: kịch bản trượt Script QA (thành bài học, bản lỗi không được dùng lại), chủ kênh duyệt (bản duyệt thành ví dụ mẫu), chủ kênh yêu cầu sửa/loại (thành bài học), tốc độ đọc đo từ audio thật, claim đã xác minh (thành kho kiến thức). Mỗi Chủ nhật, Ban Đào tạo dùng Haiku đúc kết bài học thành **sổ tay văn phong** cho từng phòng.
 
@@ -92,6 +94,19 @@ Nguồn học khác, không tốn tiền: kịch bản trượt Script QA (thàn
 Cài trò: cài Ollama → `ollama pull qwen2.5:7b-instruct` → **Thiết lập → Bộ não phòng ban → Địa chỉ Ollama** = `http://localhost:11434`. Mỗi phòng có thể đặt *Tự động*, *Chỉ nhờ thầy* hoặc *Chỉ trò tự làm* ở trang **Bộ não AI & Ngân sách**.
 
 Dùng thêm ChatGPT: nhập OpenAI API key, tên model, và **bắt buộc** khai giá trong *Bảng giá bổ sung*, ví dụ `{"ten-model": [gia_vao, gia_ra]}` (USD/1 triệu token). Không biết giá thì Ban Tài chính từ chối gọi.
+
+### Phòng Bài luận — tự research web và viết bài luận theo chủ đề
+Trang **Bài luận**: nhập chủ đề, yêu cầu, kiểu bài (nghị luận, phân tích, thuyết minh, so sánh), số từ.
+
+1. **Lập kế hoạch tìm kiếm** — tách chủ đề thành 4–6 truy vấn (trò gợi ý nếu có Ollama, không thì dùng khuôn), $0.
+2. **Research** — Wikipedia (API chính thức, không cần key), thêm SearXNG tự cài hoặc Brave Search API (gói miễn phí) nếu cấu hình ở **Thiết lập → Phòng Bài luận**. Trang web được tải với robots.txt, giãn cách, giới hạn dung lượng, không vượt paywall, không gọi địa chỉ nội bộ. Các đoạn liên quan nhất (BM25) được gom thành **hồ sơ tư liệu** đánh số `S1, S2…`. Không gọi AI ở bước này, $0.
+3. **Viết** — qua bộ não phòng ban. Thầy mặc định **luân phiên Claude và ChatGPT** để trò học cách viết của cả hai; thầy và trò nhận cùng một hồ sơ tư liệu. Trò được đưa một bài mẫu của mỗi thầy cho chủ đề gần nhất và “mục tiêu cấu trúc” là trung bình các bài của thầy (số phần, độ dài đoạn, mật độ trích dẫn, có phản biện). Trang Bộ não hiển thị bảng so sánh cách viết Claude / ChatGPT / trò.
+4. **QA không dùng AI** — đúng cấu trúc và độ dài; mọi `[S…]` trỏ tới nguồn có thật trong hồ sơ; đủ số nguồn; mỗi đoạn thân bài có trích dẫn; đoạn văn bám nguồn (≥ 45% từ ngữ có trong nguồn được trích); **mọi con số phải có trong tư liệu**; không lời dẫn kiểu “dưới đây là”, không chèn link. Bài của trò trượt QA → thầy viết lại, trò bị trừ điểm.
+5. **Chủ kênh** duyệt (hoặc sửa rồi duyệt → bản sửa thành bài mẫu tốt nhất), góp ý (thành bài học), loại (không dùng làm mẫu). Tải bài kèm danh mục nguồn dạng `.md`.
+
+Chi phí: một bài 1.200 từ do Sonnet 5.5 viết khoảng 0,05–0,10 USD; phần ngân sách của phòng là 10% trần tháng (~4,75 USD ≈ 50–70 bài). Ở cấp Bậc thầy: $0. Chế độ DEMO dùng tư liệu giả lập `fixtures/research_demo.json` (bật *DEMO vẫn tìm trên mạng thật* để thử với Wikipedia); chưa có thầy lẫn trò thì ra bản nháp ghép trích đoạn gắn nhãn DEMO.
+
+**Kỳ vọng thực tế:** bài luận dài do model 7B viết sẽ kém Claude/ChatGPT về lập luận và câu chữ; QA chỉ bảo đảm bài đúng khuôn và bám nguồn, không bảo đảm hay. Muốn lên Bậc thầy nhanh và chắc hơn, dùng model trò lớn hơn nếu máy đủ mạnh (ví dụ `qwen2.5:14b-instruct`, cần ~16 GB RAM) và duyệt/sửa bài thường xuyên.
 
 ## 4. Kiến trúc
 

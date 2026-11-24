@@ -18,7 +18,7 @@ export function StateBadge({ state }: { state: string }) {
   return <span className={`badge ${cls}`} title={state}>{STATE_LABEL[state] || state}</span>;
 }
 
-export function Badge({ kind = "info", children }: { kind?: "ok" | "warn" | "bad" | "info" | "demo"; children: ReactNode }) {
+export function Badge({ kind = "info", children }: { kind?: "ok" | "warn" | "bad" | "info" | "demo" | "master"; children: ReactNode }) {
   return <span className={`badge ${kind}`}>{children}</span>;
 }
 

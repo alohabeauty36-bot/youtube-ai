@@ -480,3 +480,31 @@ class AgentSkill(Base):
     saved_usd: Mapped[float] = mapped_column(Float, default=0.0)
     last_reflect_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+class Essay(Base):
+    """Bài luận theo chủ đề do Phòng Bài luận viết: hồ sơ tư liệu (nguồn web), toàn văn, kết quả QA, ai viết, tốn bao nhiêu."""
+    __tablename__ = "essays"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+    topic: Mapped[str] = mapped_column(Text)
+    requirements: Mapped[str | None] = mapped_column(Text)
+    words: Mapped[int] = mapped_column(Integer, default=1200)
+    style: Mapped[str] = mapped_column(String(20), default="nghi_luan")
+    language: Mapped[str] = mapped_column(String(10), default="vi")
+    # queued | researching | writing | done | needs_review | blocked | failed | approved | rejected
+    status: Mapped[str] = mapped_column(String(20), default="queued", index=True)
+    stage_note: Mapped[str | None] = mapped_column(String(200))
+    dossier: Mapped[Any] = mapped_column(JSON, default=dict)
+    title: Mapped[str | None] = mapped_column(Text)
+    content: Mapped[Any] = mapped_column(JSON, default=dict)
+    markdown: Mapped[str | None] = mapped_column(Text)
+    qa: Mapped[Any] = mapped_column(JSON, default=dict)
+    source: Mapped[str | None] = mapped_column(String(20))  # memory | local | anthropic | openai | demo
+    model: Mapped[str | None] = mapped_column(String(80))
+    usd: Mapped[float] = mapped_column(Float, default=0.0)
+    memory_id: Mapped[int | None] = mapped_column(Integer)
+    feedback: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
