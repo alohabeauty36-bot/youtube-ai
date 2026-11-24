@@ -2,8 +2,15 @@
 from __future__ import annotations
 
 from celery import Celery
+from celery.signals import after_setup_logger
 
 from ..config import get_settings
+from ..error_log import install_handler
+
+
+@after_setup_logger.connect
+def _error_log_handler(**_):  # lỗi trong worker cũng hiện ở màn hình Nhật ký lỗi
+    install_handler()
 
 s = get_settings()
 app = Celery("ev_studio", broker=s.redis_url, backend=s.redis_url)

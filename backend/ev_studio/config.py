@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     configs_dir: Path = REPO_ROOT / "configs"
     fixtures_dir: Path = REPO_ROOT / "fixtures"
     media_library_dir: Path = REPO_ROOT / "media_library"
-    public_base_url: str = "http://localhost:8000"
+    public_base_url: str = "http://localhost:8010"
     trust_localhost: bool = Field(False, validation_alias="EVCS_TRUST_LOCALHOST")  # run.py bật khi chỉ nghe 127.0.0.1
     frontend_base_url: str = "http://localhost:3000"
     timezone: str = "Asia/Ho_Chi_Minh"

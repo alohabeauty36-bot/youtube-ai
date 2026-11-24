@@ -18,7 +18,7 @@ from ..config import get_settings
 from ..db import init_db
 from ..errors import BlockedByCredentials, EVStudioError, GateBlocked
 from ..models import (
-    AppSetting, Asset, AuditLog, Channel, Claim, CostUsage, Job, NewsItem, Render, ResearchPack, ReviewEvent, Scene,
+    AppSetting, Asset, AuditLog, Channel, Claim, CostUsage, ErrorLog, Job, NewsItem, Render, ResearchPack, ReviewEvent, Scene,
     ScriptVersion, SEOVariant, Source, Story, TelegramMessage, TTSSegment, YouTubeUpload, now,
 )
 from ..security import audit, encrypt_str, redact, setup_logging, sign_link, verify_link
@@ -54,6 +54,16 @@ async def _evs_err(request: Request, exc: EVStudioError):
 
     code = 409 if isinstance(exc, GateBlocked) else 424 if isinstance(exc, BlockedByCredentials) else 400
     return JSONResponse({"detail": redact(exc), "reasons": getattr(exc, "reasons", None)}, status_code=code)
+
+
+@app.exception_handler(Exception)
+async def _unhandled(request: Request, exc: Exception):
+    """Lỗi không lường trước ở API → ghi vào Nhật ký lỗi, trả 500 gọn (không lộ traceback ra trình duyệt)."""
+    from fastapi.responses import JSONResponse
+
+    log.error("API %s %s lỗi: %s", request.method, request.url.path, redact(f"{type(exc).__name__}: {exc}"), exc_info=exc,
+              extra={"evcs_source": "api", "evcs_details": {"method": request.method, "path": request.url.path}})
+    return JSONResponse({"detail": f"Lỗi máy chủ ({type(exc).__name__}). Xem chi tiết ở trang Nhật ký lỗi."}, status_code=500)
 
 
 # ------------------------------------------------------------------ serializers
@@ -845,8 +855,155 @@ def dashboard(db: Session = Depends(get_db), actor: Actor = Depends(current_acto
     ch = db.scalar(select(Channel).where(Channel.selected.is_(True)))
     alerts = [{"story_id": s.id, "topic": s.topic, "blockers": s.blockers, "state": s.state}
               for s in db.scalars(select(Story).order_by(Story.updated_at.desc()).limit(50)) if s.blockers][:10]
+    open_errors = dict(db.execute(select(ErrorLog.level, func.count(ErrorLog.id)).where(ErrorLog.resolved.is_(False))
+                                  .group_by(ErrorLog.level)).all())
     return {"by_state": by_state, "shortlist": news_by, "cost_usd": round(cost, 4), "channel": ch.title if ch else None,
-            "settings": get_settings_api(db, actor), "alerts": alerts, "mode": get_settings().app_mode}
+            "settings": get_settings_api(db, actor), "alerts": alerts, "mode": get_settings().app_mode,
+            "open_errors": {"total": sum(open_errors.values()), **open_errors}}
+
+
+# ------------------------------------------------------------------ nhật ký lỗi (màn hình "Nhật ký lỗi")
+
+def ser_error(e: ErrorLog, full: bool = False) -> dict:
+    from ..error_log import SOURCE_LABEL, hint_for
+
+    d = {k: getattr(e, k) for k in ("id", "level", "source", "logger", "message", "exc_type", "story_id", "job_id", "job_type",
+                                    "count", "first_seen_at", "last_seen_at", "resolved", "resolved_at", "resolved_by",
+                                    "resolution_note")}
+    d["source_label"] = SOURCE_LABEL.get(e.source, e.source)
+    d["hint"] = hint_for(e.exc_type, e.message, e.source)
+    d["has_traceback"] = bool(e.traceback)
+    if full:
+        d["traceback"] = e.traceback
+        d["details"] = e.details
+    return d
+
+
+def _error_filters(level: str | None, source: str | None, status: str, q: str | None, story_id: str | None,
+                   since_hours: float | None) -> list:
+    from datetime import timedelta
+
+    conds = []
+    if level:
+        conds.append(ErrorLog.level.in_([x for x in level.upper().split(",") if x]))
+    if source:
+        conds.append(ErrorLog.source.in_([x for x in source.split(",") if x]))
+    if status == "open":
+        conds.append(ErrorLog.resolved.is_(False))
+    elif status == "resolved":
+        conds.append(ErrorLog.resolved.is_(True))
+    if story_id:
+        conds.append(ErrorLog.story_id == story_id)
+    if since_hours:
+        conds.append(ErrorLog.last_seen_at >= now() - timedelta(hours=since_hours))
+    if q:
+        like = f"%{q.strip()}%"
+        conds.append(ErrorLog.message.ilike(like) | ErrorLog.exc_type.ilike(like) | ErrorLog.job_type.ilike(like)
+                     | ErrorLog.story_id.ilike(like))
+    return conds
+
+
+@app.get("/api/errors")
+def list_errors(level: str | None = None, source: str | None = None, status: Literal["open", "resolved", "all"] = "open",
+                q: str | None = None, story_id: str | None = None, since_hours: float | None = None,
+                limit: int = Query(50, ge=1, le=500), offset: int = Query(0, ge=0),
+                db: Session = Depends(get_db), actor: Actor = Depends(current_actor)):
+    from datetime import timedelta
+
+    from ..error_log import SOURCE_LABEL, flush_pending
+
+    flush_pending(2.0)  # lỗi vừa xảy ra (đang trong hàng đợi) cũng hiện ngay
+    conds = _error_filters(level, source, status, q, story_id, since_hours)
+    total = db.scalar(select(func.count(ErrorLog.id)).where(*conds)) or 0
+    rows = list(db.scalars(select(ErrorLog).where(*conds).order_by(ErrorLog.last_seen_at.desc(), ErrorLog.id.desc())
+                           .offset(offset).limit(limit)))
+    topics = dict(db.execute(select(Story.id, Story.topic).where(Story.id.in_(list({r.story_id for r in rows if r.story_id})))).all())
+    items = [ser_error(r) | {"story_topic": topics.get(r.story_id)} for r in rows]
+    open_ = ErrorLog.resolved.is_(False)
+    summary = {
+        "open": db.scalar(select(func.count(ErrorLog.id)).where(open_)) or 0,
+        "open_critical": db.scalar(select(func.count(ErrorLog.id)).where(open_, ErrorLog.level.in_(["ERROR", "CRITICAL"]))) or 0,
+        "last_24h": db.scalar(select(func.coalesce(func.sum(ErrorLog.count), 0))
+                              .where(ErrorLog.last_seen_at >= now() - timedelta(hours=24))) or 0,
+        "resolved": db.scalar(select(func.count(ErrorLog.id)).where(ErrorLog.resolved.is_(True))) or 0,
+        "by_source": [{"source": s_, "label": SOURCE_LABEL.get(s_, s_), "count": n}
+                      for s_, n in db.execute(select(ErrorLog.source, func.count(ErrorLog.id)).where(open_)
+                                              .group_by(ErrorLog.source).order_by(func.count(ErrorLog.id).desc())).all()],
+    }
+    return {"items": items, "total": total, "limit": limit, "offset": offset, "summary": summary,
+            "sources": [{"source": k, "label": v} for k, v in SOURCE_LABEL.items()]}
+
+
+@app.get("/api/errors/{eid}")
+def get_error(eid: int, db: Session = Depends(get_db), actor: Actor = Depends(current_actor)):
+    e = db.get(ErrorLog, eid)
+    if e is None:
+        raise HTTPException(404, "Không tìm thấy lỗi")
+    out = ser_error(e, full=True)
+    st = db.get(Story, e.story_id) if e.story_id else None
+    out["story"] = {"id": st.id, "topic": st.topic, "state": st.state, "last_error": st.last_error, "blockers": st.blockers} if st else None
+    j = db.get(Job, e.job_id) if e.job_id else None
+    out["job"] = {"id": j.id, "job_type": j.job_type, "status": j.status, "attempts": j.attempts, "max_attempts": j.max_attempts,
+                  "history": j.history, "duration_seconds": j.duration_seconds} if j else None
+    return out
+
+
+class ErrorResolve(BaseModel):
+    resolved: bool = True
+    note: str | None = Field(default=None, max_length=2000)
+
+
+@app.post("/api/errors/{eid}/resolve")
+def resolve_error(eid: int, body: ErrorResolve, db: Session = Depends(get_db), actor: Actor = Depends(current_actor)):
+    e = db.get(ErrorLog, eid)
+    if e is None:
+        raise HTTPException(404, "Không tìm thấy lỗi")
+    e.resolved = body.resolved
+    e.resolved_at, e.resolved_by = (now(), actor.name) if body.resolved else (None, None)
+    e.resolution_note = body.note if body.resolved else None
+    audit(db, actor.name, "error.resolve" if body.resolved else "error.reopen", "error_log", str(e.id), note=body.note or "")
+    db.commit()
+    return ser_error(e)
+
+
+class ErrorBulk(BaseModel):
+    ids: list[int] | None = None  # None = mọi lỗi đang mở khớp bộ lọc
+    level: str | None = None
+    source: str | None = None
+    q: str | None = None
+    story_id: str | None = None
+    note: str | None = Field(default=None, max_length=2000)
+
+
+@app.post("/api/errors/resolve-bulk")
+def resolve_errors_bulk(body: ErrorBulk, db: Session = Depends(get_db), actor: Actor = Depends(current_actor)):
+    from sqlalchemy import update as sa_update
+
+    conds = _error_filters(body.level, body.source, "open", body.q, body.story_id, None)
+    if body.ids is not None:
+        conds.append(ErrorLog.id.in_(body.ids))
+    n = db.execute(sa_update(ErrorLog).where(*conds).values(resolved=True, resolved_at=now(), resolved_by=actor.name,
+                                                            resolution_note=body.note)
+                   .execution_options(synchronize_session=False)).rowcount
+    audit(db, actor.name, "error.resolve_bulk", "error_log", None, count=n, source=body.source or "", level=body.level or "")
+    db.commit()
+    return {"resolved": n}
+
+
+@app.delete("/api/errors")
+def purge_errors(older_than_days: float = Query(0, ge=0), db: Session = Depends(get_db), actor: Actor = Depends(require_owner)):
+    """Xoá các lỗi ĐÃ XỬ LÝ (tuỳ chọn: chỉ những lỗi cũ hơn N ngày). Lỗi đang mở không bao giờ bị xoá ở đây."""
+    from datetime import timedelta
+
+    from sqlalchemy import delete as sa_delete
+
+    conds = [ErrorLog.resolved.is_(True)]
+    if older_than_days:
+        conds.append(ErrorLog.last_seen_at < now() - timedelta(days=older_than_days))
+    n = db.execute(sa_delete(ErrorLog).where(*conds)).rowcount
+    audit(db, actor.name, "error.purge", "error_log", None, count=n, older_than_days=older_than_days)
+    db.commit()
+    return {"deleted": n}
 
 
 # ------------------------------------------------------------------ cấu hình API (trang Thiết lập)

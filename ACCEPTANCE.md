@@ -9,7 +9,7 @@ Ngày chạy: 23/11/2026, máy build Linux, 2 vCPU, không GPU, không có crede
 
 | requirement | implementation_path | test_command | test_result | external_credentials_needed | notes |
 |---|---|---|---|---|---|
-| 1. Cài đặt & khởi chạy | `run.py`, `start.bat`, `start.sh`, `docker-compose.yml`, `/api/health` | `python run.py` (thư mục sạch) + `curl :8000/api/health` | PASS (Linux) | — | Một lệnh: tạo .venv, cài thư viện, migrate, phục vụ giao diện và API cùng một cổng. Chưa thử trên Windows thật, chưa chạy `docker compose build`. |
+| 1. Cài đặt & khởi chạy | `run.py`, `start.bat`, `start.sh`, `docker-compose.yml`, `/api/health` | `python run.py` (thư mục sạch) + `curl :8010/api/health` | PASS (Linux) | — | Một lệnh: tạo .venv, cài thư viện, migrate, phục vụ giao diện và API cùng một cổng. Chưa thử trên Windows thật, chưa chạy `docker compose build`. |
 | 1b. Cấu hình API trong giao diện | `runtime_config.py`, `services/connection_tests.py`, `/api/config`, trang Thiết lập | `pytest tests/test_config.py` | PASS | — | Lưu mã hoá, che giá trị, kiểm tra kết nối từng dịch vụ (dùng mock), chỉ chủ kênh được sửa. |
 | 2. Ingest nguồn tin | `services/ingest.py`, `services/ranker.py`, `services/sources/fetcher.py` | `pytest tests/test_news_factcheck.py` | PASS | RSS chính thức (chủ kênh chọn) | 10 URL: 2 trùng (khớp canonical_url + hash nội dung), 1 thiếu nguồn bị chặn; lưu đủ published/event/effective. |
 | 3. Fact checking | `services/fact_checker.py` | `pytest tests/test_news_factcheck.py tests/test_api_duration.py::test_claim_manual_verify_requires_source_and_note` | PASS | — | Claim nhạy cảm cần nguồn cấp 1 hoặc ≥ 2 nguồn độc lập. Trích dẫn phải khớp văn bản nguồn. Xung đột trong bài và giữa các bài → `[CẦN XÁC MINH]`. Có freshness_check. |

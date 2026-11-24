@@ -10,3 +10,4 @@ frontend/.next/
 *.tsbuildinfo
 frontend/out/
 .venv/
+*.egg-info/

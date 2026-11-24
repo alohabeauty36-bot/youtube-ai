@@ -17,6 +17,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <Link href="/news">Săn tin</Link>
               <Link href="/stories">Video đang làm</Link>
               <Link href="/analytics">Phân tích & chi phí</Link>
+              <Link href="/errors">Nhật ký lỗi</Link>
               <Link href="/settings">Thiết lập & tài khoản</Link>
             </nav>
             <div className="lock">🔒 Mọi video được tải lên YouTube ở trạng thái <b>RIÊNG TƯ</b>. Ứng dụng không có chức năng công khai —

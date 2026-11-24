@@ -18,10 +18,10 @@ migrate:
 	alembic upgrade head
 
 api:
-	uvicorn ev_studio.api.main:app --reload --port 8000 --app-dir backend
+	uvicorn ev_studio.api.main:app --reload --port 8010 --app-dir backend
 
-web:                ## dev giao diện (hot reload) trỏ về API :8000
-	cd frontend && NEXT_PUBLIC_API_BASE=http://localhost:8000 npm run dev
+web:                ## dev giao diện (hot reload) trỏ về API :8010
+	cd frontend && NEXT_PUBLIC_API_BASE=http://localhost:8010 npm run dev
 
 build-web:          ## build giao diện tĩnh vào backend/ev_studio/web_dist
 	$(PY) run.py --build-web --no-browser

@@ -40,7 +40,7 @@ def refresh_statuses() -> int:
                 n += 1
             except Exception:
                 db.rollback()
-                log.exception("RefreshStatusJob lỗi cho %s", st.id)
+                log.exception("RefreshStatusJob lỗi cho %s", st.id, extra={"evcs_story_id": st.id})
     return n
 
 

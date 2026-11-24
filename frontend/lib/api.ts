@@ -1,5 +1,5 @@
 // Client API: token lưu ở localStorage của trình duyệt chủ kênh; không bao giờ gửi secret dịch vụ ra frontend.
-// Mặc định cùng địa chỉ với backend (giao diện được backend phục vụ). Khi dev bằng `next dev`: NEXT_PUBLIC_API_BASE=http://localhost:8000
+// Mặc định cùng địa chỉ với backend (giao diện được backend phục vụ). Khi dev bằng `next dev`: NEXT_PUBLIC_API_BASE=http://localhost:8010
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
 
 export function getToken(): string {
@@ -38,5 +38,7 @@ export function fmtTime(s?: number | null) {
 }
 export function fmtDate(s?: string | null) {
   if (!s) return "—";
-  try { return new Date(s).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" }); } catch { return s; }
+  // DB lưu giờ UTC; SQLite trả về chuỗi không kèm múi giờ → coi là UTC (nếu không trình duyệt hiểu nhầm là giờ máy, lệch 7 tiếng)
+  const iso = /[zZ]|[+-]\d\d:?\d\d$/.test(s) || !s.includes("T") ? s : `${s}Z`;
+  try { return new Date(iso).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" }); } catch { return s; }
 }

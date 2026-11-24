@@ -33,8 +33,10 @@ def _cleanup():
 @pytest.fixture(scope="session")
 def db_ready():
     from ev_studio.db import init_db
+    from ev_studio.error_log import install_handler
 
     init_db()
+    install_handler()  # như khi chạy app: lỗi ghi vào bảng error_logs
     return True
 
 

@@ -17,13 +17,13 @@ Cần có: **Python 3.11 trở lên** và **FFmpeg**. Trên Windows, nếu chưa
 python run.py          # Windows: bấm đúp start.bat (hoặc: py run.py) · macOS/Linux: ./start.sh
 ```
 
-**Lần chạy đầu**, lệnh này sẽ: tạo môi trường `.venv` riêng → cài thư viện → tạo database và khoá mã hoá (`data/.secret_key`) → chạy server → mở **http://localhost:8000**.
+**Lần chạy đầu**, lệnh này sẽ: tạo môi trường `.venv` riêng → cài thư viện → tạo database và khoá mã hoá (`data/.secret_key`) → chạy server → mở **http://localhost:8010**.
 **Các lần sau**, ứng dụng khởi động ngay. Giao diện web và API chạy chung một cổng, không cần Node.js.
 
 | Tuỳ chọn | Ý nghĩa |
 |---|---|
 | `--with-tts` | Cài thêm VieNeu-TTS để dùng giọng đọc thật (CPU) |
-| `--port 8010` | Đổi cổng |
+| `--port 8020` | Đổi cổng (mặc định 8010) |
 | `--host 0.0.0.0` | Cho máy khác trong mạng truy cập. Khi đó **bắt buộc** đặt mật khẩu chủ kênh |
 | `--no-browser` | Không tự mở trình duyệt |
 | `--build-web` | Build lại giao diện từ `frontend/` (cần Node.js 20+, chỉ dành cho lập trình viên) |
@@ -47,7 +47,7 @@ Sau khi nhập key, đổi **Chế độ** sang `production`, rồi bấm **Kế
 
 **Truy cập:** khi mở trên chính máy chạy ứng dụng (127.0.0.1), bạn không cần mật khẩu. Khi truy cập từ máy khác, ứng dụng yêu cầu mật khẩu chủ kênh hoặc biên tập viên. Nếu ứng dụng nằm sau reverse proxy, các request có header proxy **không** được tin là truy cập cục bộ.
 
-**Dành cho lập trình viên:** `make test` chạy 90 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8000.
+**Dành cho lập trình viên:** `make test` chạy 97 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8010.
 
 ### Windows 11
 Nên dùng WSL2 (Ubuntu) với Docker Desktop. Cách native cũng chạy được với Python 3.12, FFmpeg (gyan.dev, có libass) và `pip install vieneu` (CPU/ONNX). GPU CUDA trên Windows cần cài `torch==2.8.0` cu128 trước, theo README của VieNeu.
@@ -74,9 +74,10 @@ prompts/pillars/P1|P2|P3.md       hồ sơ trụ cột
 prompts/reference/…               Mục IV nguyên văn (tham khảo văn phong)
 frontend/                         Next.js 15 + TypeScript (xuất tĩnh → backend/ev_studio/web_dist, backend phục vụ)
 migrations/                       Alembic
-tests/                            90 test
+tests/                            97 test
 run.py, start.bat, start.sh       chạy bằng một lệnh
 backend/ev_studio/runtime_config.py  cấu hình API lưu mã hoá trong DB
+backend/ev_studio/error_log.py       Nhật ký lỗi: WARNING+ của ev_studio.* → bảng error_logs (che secret, gộp lỗi trùng)
 ```
 
 **Ba loại duyệt được tách riêng:**
@@ -88,6 +89,7 @@ backend/ev_studio/runtime_config.py  cấu hình API lưu mã hoá trong DB
 - **Backup:** dump Postgres (`pg_dump`) và thư mục artifacts (volume `artifacts`). Artifact là immutable, có checksum, và được ghi qua file tạm rồi đổi tên nguyên tử.
 - **Gia hạn token:** client Google tự refresh rồi ghi đè token đã mã hoá. Nếu refresh thất bại, story chuyển `NEEDS_REVIEW` với lý do `BLOCKED_BY_CREDENTIALS`, và chủ kênh cần kết nối lại kênh.
 - **Mất mạng:** retry theo backoff. Upload dùng resumable. Sau mỗi lần insert, video id được lưu ngay. Trước khi upload lại, hệ thống tìm video theo tag `evcs-<hash>` để không đăng trùng. Bấm **Chạy tiếp / thử lại** sẽ resume từ checkpoint.
+- **Nhật ký lỗi** (menu bên trái): mọi cảnh báo và lỗi của tool — quét tin, Claude, giọng đọc, tư liệu, dựng video, YouTube, Telegram, lịch chạy, API — được ghi lại kèm thời gian, số lần lặp, video và job liên quan, traceback và **gợi ý xử lý** bằng tiếng Việt. Lọc theo mức độ, nguồn, thời gian hoặc tìm kiếm. Bấm **Đã xử lý** khi đã khắc phục (nếu lỗi tái phát sẽ mở nhóm mới). **Sao chép báo cáo lỗi** để gửi cho người hỗ trợ. Key và token luôn được che trước khi lưu. Bảng giữ tối đa 5.000 nhóm lỗi gần nhất; nút **Xoá lỗi đã xử lý** chỉ xoá lỗi đã đánh dấu. Bảng điều khiển hiện cảnh báo khi còn lỗi chưa xử lý, và trang video có đường dẫn tới lỗi của riêng video đó.
 - **Kiểm tra định kỳ:** `PYTHONPATH=backend python3 scripts/check_privacy.py` (sẽ fail nếu có video nào không private mà chưa được ghi nhận là chủ kênh tự công khai).
 - **Chi phí** (ước tính, tham khảo):
   - Claude: mỗi video khoảng 15–30 nghìn token vào và 6–10 nghìn token ra (ResearchPack, kịch bản, tối đa 3 lần viết lại thời lượng). Xem `/api/costs`; đơn giá chỉnh trong `services/llm.py`.

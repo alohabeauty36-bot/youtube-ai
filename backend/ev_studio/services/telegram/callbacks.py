@@ -56,6 +56,8 @@ def handle_callback(session: Session, callback: dict, tg=None) -> dict:
         session.commit()
     except Exception as e:
         session.rollback()
+        log.warning("Nút Telegram '%s' lỗi cho story %s: %s", tok.action, tok.story_id, e, exc_info=e,
+                    extra={"evcs_story_id": tok.story_id})
         return answer(f"⛔ {e}")
     if tok.action == "approve":
         return answer("✅ Đã ghi nhận kiểm duyệt. Video VẪN RIÊNG TƯ — hãy tự công khai trên YouTube Studio.") | res

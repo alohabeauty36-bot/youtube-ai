@@ -29,6 +29,7 @@ export function StoryHeader({ s, active, reload }: { s: any; active: "editor" | 
       {s.blockers?.length > 0 && <div className="error"><b>Đang bị chặn:</b><ul>{s.blockers.map((b: string, i: number) => <li key={i}>{b}</li>)}</ul>
         {s.blockers.some((b: string) => b.includes("BLOCKED_BY_CREDENTIALS")) && <a href="/settings/">→ Mở Thiết lập để nhập/kiểm tra key API, rồi bấm “Chạy tiếp / thử lại”.</a>}</div>}
       {s.last_error && !s.blockers?.length && s.state.startsWith("FAILED") && <div className="error small">{s.last_error}</div>}
+      {(s.last_error || s.blockers?.length > 0) && <p className="small"><a href={`/errors/?story_id=${s.id}`}>→ Xem nhật ký lỗi của video này</a></p>}
       <ErrorBox error={err} />
       <StoryTabs id={s.id} active={active} />
     </>

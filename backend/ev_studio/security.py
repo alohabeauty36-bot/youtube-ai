@@ -115,6 +115,9 @@ def setup_logging(level: int = logging.INFO) -> None:
         handler.addFilter(RedactingFilter())
         root.addHandler(handler)
     root.setLevel(level)
+    from .error_log import install_handler
+
+    install_handler()  # WARNING+ của ev_studio.* → bảng error_logs (màn hình Nhật ký lỗi)
     for name in ("httpx", "googleapiclient.discovery", "urllib3"):
         logging.getLogger(name).setLevel(logging.WARNING)
 

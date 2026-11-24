@@ -9,7 +9,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
-from ..errors import ChannelMismatch, GateBlocked, PermanentError, PrivacyViolation, RetryableError
+from ..error_log import was_logged
+from ..errors import BlockedByCredentials, ChannelMismatch, GateBlocked, PermanentError, PrivacyViolation, RetryableError
 from ..models import (
     AppSetting, Asset, AssetLicense, Channel, Claim, CostUsage, NewsItem, Render, ResearchPack, ReviewEvent, Scene,
     ScriptVersion, SEOVariant, Story, TelegramCallbackToken, TelegramMessage, TTSSegment, YouTubeUpload, now,
@@ -35,6 +36,8 @@ log = logging.getLogger(__name__)
 
 
 class DurationOutOfRange(GateBlocked):
+    auto_handled = True  # pipeline tự viết lại kịch bản → không ghi vào Nhật ký lỗi
+
     def __init__(self, seconds: float):
         self.seconds = seconds
         super().__init__(f"Thời lượng {seconds:.1f}s ngoài khoảng mục tiêu")
@@ -793,15 +796,24 @@ def run_pipeline(story_id: str, providers: Providers | None = None, actor: str =
                     story.blockers = [f"Telegram chưa gửi được: {redact(e)}"]
                     story.last_error = redact(e)
                     audit(session, "system", "telegram.failed", "story", story.id, error=redact(e))
+                    session.commit()
+                    if not was_logged(e):
+                        log.warning("Telegram chưa gửi được cho story %s: %s", story_id, redact(e), exc_info=e,
+                                    extra={"evcs_source": "telegram", "evcs_story_id": story_id})
                 session.commit()
             return {"state": story.state, "blockers": story.blockers}
         except DurationOutOfRange as e:  # pragma: no cover - đã xử lý trong vòng lặp
             fail_story(session, story, GateBlocked(str(e)))
             return {"state": session.get(Story, story_id).state, "error": str(e)}
         except Exception as e:
-            log.exception("Pipeline dừng ở story %s", story_id)
-            fail_story(session, story, e)
+            fail_story(session, story, e)  # rollback trước rồi mới ghi log → không giữ khoá DB khi ghi Nhật ký lỗi
             st = session.get(Story, story_id)
+            if not was_logged(e):
+                gate = isinstance(e, (GateBlocked, BlockedByCredentials))
+                log.log(logging.WARNING if gate else logging.ERROR, "Pipeline dừng ở story %s (%s): %s", story_id,
+                        st.state, redact(e), exc_info=None if gate else e,
+                        extra={"evcs_source": "pipeline", "evcs_story_id": story_id,
+                               "evcs_details": {"topic": st.topic, "state": st.state, "blockers": st.blockers}})
             return {"state": st.state, "error": st.last_error, "blockers": st.blockers}
         finally:
             release_lease(session, story_id)
