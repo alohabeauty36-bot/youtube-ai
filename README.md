@@ -47,9 +47,17 @@ Mở **Thiết lập → Cấu hình API & dịch vụ**. Không cần sửa fil
 
 Sau khi nhập key, đổi **Chế độ** sang `production`, rồi bấm **Kết nối kênh YouTube** để cấp quyền và chọn đúng kênh. Nếu thiếu key, video sẽ dừng ở trạng thái `BLOCKED_BY_CREDENTIALS` kèm đường dẫn mở trang Thiết lập, chứ không lặng lẽ chuyển sang dữ liệu giả lập.
 
+**Chuyển sang chạy thật sẽ xoá hết dữ liệu DEMO.** Khi lưu **Chế độ** = `production`, ứng dụng hiện hộp xác nhận kèm số lượng sẽ xoá, rồi xoá trong cùng một lần lưu:
+- Kênh, nguồn tin, tin fixture (kèm claim), mọi video DEMO và các bản viết lại, cùng ResearchPack, kịch bản, giọng đọc, cảnh, tư liệu, render, SEO, upload và tin Telegram giả lập, job, lượt duyệt và lỗi gắn với các video đó.
+- Bài luận DEMO, chi phí ước tính DEMO, bộ nhớ AI học từ dữ liệu DEMO.
+- File: `artifacts/<video>`, YouTube/Telegram giả lập, `media_library/demo`, cache giọng giả lập.
+- **Autopilot bị tắt** nếu đang bật (thường do chạy thử DEMO). Bật lại ở **Thiết lập → Tự động hoá** khi đã sẵn sàng.
+
+Giữ nguyên: cấu hình và key đã nhập, **sổ cái ngân sách** (tiền thật đã tiêu, kể cả khi thử Claude lúc DEMO), nhật ký audit, hồ sơ năng lực phòng ban và mọi dữ liệu thật. Không hoàn tác được. Nếu còn video DEMO đang chạy dở, ứng dụng từ chối đổi chế độ và báo đợi chạy xong. Nếu đặt `APP_MODE=production` trong `.env`, dữ liệu DEMO còn sót sẽ được xoá ngay khi khởi động.
+
 **Truy cập:** khi mở trên chính máy chạy ứng dụng (127.0.0.1), bạn không cần mật khẩu. Khi truy cập từ máy khác, ứng dụng yêu cầu mật khẩu chủ kênh hoặc biên tập viên. Nếu ứng dụng nằm sau reverse proxy, các request có header proxy **không** được tin là truy cập cục bộ.
 
-**Dành cho lập trình viên:** `make test` chạy 118 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8010.
+**Dành cho lập trình viên:** `make test` chạy 133 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8010.
 
 ### Windows 11
 Nên dùng WSL2 (Ubuntu) với Docker Desktop. Cách native cũng chạy được với Python 3.12, FFmpeg (gyan.dev, có libass) và `pip install vieneu` (CPU/ONNX). GPU CUDA trên Windows cần cài `torch==2.8.0` cu128 trước, theo README của VieNeu.
@@ -126,7 +134,7 @@ prompts/pillars/P1|P2|P3.md       hồ sơ trụ cột
 prompts/reference/…               Mục IV nguyên văn (tham khảo văn phong)
 frontend/                         Next.js 15 + TypeScript (xuất tĩnh → backend/ev_studio/web_dist, backend phục vụ)
 migrations/                       Alembic
-tests/                            118 test
+tests/                            133 test
 run.py, start.bat, start.sh       chạy bằng một lệnh
 backend/ev_studio/runtime_config.py  cấu hình API lưu mã hoá trong DB
 backend/ev_studio/agents/            Ban Tài chính (budget, pricing) + bộ não phòng ban (brain, memory, teachers, learning, writer)

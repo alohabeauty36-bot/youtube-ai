@@ -69,6 +69,225 @@ def seed_demo(session: Session) -> Channel:
     return ch
 
 
+# ------------------------------------------------------------------ xoá dữ liệu DEMO khi chuyển sang chạy thật
+#
+# Chọn "production" = chỉ còn dữ liệu thật. Xoá: kênh/nguồn DEMO, tin fixture + claim, mọi video DEMO (kể cả các bản
+# viết lại) cùng toàn bộ thứ thuộc về chúng (ResearchPack, kịch bản, TTS, cảnh, tư liệu, render, SEO, upload DEMO, Telegram
+# DEMO, job, sự kiện duyệt, lỗi gắn với video DEMO), bài luận DEMO, chi phí ước tính DEMO, bộ nhớ AI học từ dữ liệu DEMO,
+# và file (artifacts/<video>, YouTube/Telegram giả lập, thư viện ảnh DEMO, cache giọng giả lập).
+# GIỮ: sổ cái ngân sách (tiền thật đã tiêu, kể cả khi thử Claude lúc DEMO), nhật ký audit, cấu hình, hồ sơ năng lực phòng ban.
+
+DEMO_TTS_MODEL = "demo-tone-v1"
+
+
+def _chunks(ids: list, n: int = 500):
+    for i in range(0, len(ids), n):
+        yield ids[i:i + n]
+
+
+def _demo_story_ids(session: Session) -> tuple[list[str], list[str], list[str], list[str]]:
+    """(story_ids, news_ids, source_ids, channel_ids). Video DEMO = gắn nhãn DEMO, hoặc dựng từ tin/kênh DEMO, hoặc là bản
+    viết lại của một video DEMO (lặp đến khi không thêm được)."""
+    from .models import NewsItem
+
+    channel_ids = list(session.scalars(select(Channel.id).where(Channel.is_demo.is_(True))))
+    source_ids = list(session.scalars(select(Source.id).where(Source.is_demo.is_(True))))
+    news_q = select(NewsItem.id).where(NewsItem.is_demo.is_(True))
+    if source_ids:
+        news_q = select(NewsItem.id).where((NewsItem.is_demo.is_(True)) | (NewsItem.source_id.in_(source_ids)))
+    news_ids = list(session.scalars(news_q))
+    from .models import Story
+
+    cond = Story.is_demo.is_(True)
+    if news_ids:
+        cond = cond | Story.news_item_id.in_(news_ids)
+    if channel_ids:
+        cond = cond | Story.channel_id.in_(channel_ids)
+    ids = set(session.scalars(select(Story.id).where(cond)))
+    while ids:
+        more = {i for chunk in _chunks(list(ids)) for i in session.scalars(
+            select(Story.id).where(Story.parent_story_id.in_(chunk), Story.id.notin_(ids)))}
+        if not more:
+            break
+        ids |= more
+    return sorted(ids), news_ids, source_ids, channel_ids
+
+
+def demo_data_summary(session: Session) -> dict:
+    """Đếm dữ liệu DEMO sẽ bị xoá (cho hộp xác nhận ở trang Thiết lập)."""
+    from .models import CostUsage, Essay, Story, now
+    from .workers.orchestrator import WORKER_ID
+
+    story_ids, news_ids, source_ids, channel_ids = _demo_story_ids(session)
+    t = now()
+    running = 0
+    for chunk in _chunks(story_ids):
+        q = select(Story.id).where(Story.id.in_(chunk), Story.lease_owner.is_not(None), Story.lease_expires_at > t)
+        if get_settings().job_executor == "inline":
+            # chạy job ngay trong tiến trình này: lease của tiến trình cũ (đã tắt/sập) là lease mồ côi, không chặn
+            q = q.where(Story.lease_owner == WORKER_ID)
+        running += len(list(session.scalars(q)))
+    out = {
+        "stories": len(story_ids), "news": len(news_ids), "sources": len(source_ids), "channels": len(channel_ids),
+        "essays": len(list(session.scalars(select(Essay.id).where(Essay.is_demo.is_(True))))),
+        "cost_rows": len(list(session.scalars(select(CostUsage.id).where(CostUsage.is_demo.is_(True))))),
+        "running_stories": running,
+        "has_files": any(p.exists() for p in _demo_dirs()),
+    }
+    out["total"] = sum(v for k, v in out.items() if k not in ("running_stories", "has_files")) + int(out["has_files"])
+    return out
+
+
+def _demo_dirs() -> list[Path]:
+    s = get_settings()
+    return [s.artifacts_dir / "demo_youtube", s.artifacts_dir / "demo_telegram", s.media_library_dir / "demo"]
+
+
+class DemoPurgeBlocked(ValueError):
+    """Còn video DEMO đang chạy pipeline: xoá lúc này sẽ làm job đó lỗi giữa chừng."""
+
+
+def purge_demo_data(session: Session, actor: str, *, force: bool = False) -> dict:
+    """Xoá mọi dữ liệu DEMO trong session (CHƯA commit). Trả về số dòng đã xoá + danh sách file/thư mục cần xoá sau khi
+    commit thành công (gọi `remove_demo_files`). `force=False`: từ chối nếu còn video DEMO đang giữ lease (đang chạy)."""
+    from sqlalchemy import delete, or_, update
+
+    from .agents.memory import key_hash
+    from .models import (
+        AgentMemory, Asset, AssetLicense, Claim, CostUsage, ErrorLog, Essay, Job, NewsItem, Render, ResearchPack,
+        ReviewEvent, Scene, ScriptVersion, SEOVariant, Story, TelegramCallbackToken, TelegramMessage, TTSSegment,
+        YouTubeUpload,
+    )
+    from .services.tts.pipeline import cache_key
+
+    summary = demo_data_summary(session)
+    if summary["running_stories"] and not force:
+        raise DemoPurgeBlocked(
+            f"Đang có {summary['running_stories']} video DEMO chạy dở. Đợi chạy xong (thường vài phút) rồi chọn lại chế độ production.")
+    story_ids, news_ids, source_ids, channel_ids = _demo_story_ids(session)
+    s = get_settings()
+    counts: dict[str, int] = {}
+    files: list[Path] = []
+
+    def rm(model, *conds, key: str | None = None) -> None:
+        n = session.execute(delete(model).where(*conds).execution_options(synchronize_session=False)).rowcount or 0
+        k = key or model.__tablename__
+        counts[k] = counts.get(k, 0) + n
+
+    for ch in _chunks(story_ids):
+        sv_ids = list(session.scalars(select(ScriptVersion.id).where(ScriptVersion.story_id.in_(ch))))
+        for sv in _chunks(sv_ids):
+            for text, voice, mv in session.execute(select(TTSSegment.tts_text, TTSSegment.voice, TTSSegment.model_version)
+                                                   .where(TTSSegment.script_version_id.in_(sv))):
+                if mv == DEMO_TTS_MODEL:
+                    files.append(s.artifacts_dir / "_tts_cache" / f"{cache_key(text, voice, mv)}.wav")
+            rm(TTSSegment, TTSSegment.script_version_id.in_(sv))
+            rm(Scene, Scene.script_version_id.in_(sv))
+        rm(Scene, Scene.story_id.in_(ch))
+        asset_ids = list(session.scalars(select(Asset.id).where(Asset.story_id.in_(ch))))
+        for a in _chunks(asset_ids):
+            rm(AssetLicense, AssetLicense.asset_id.in_(a))
+            rm(Asset, Asset.id.in_(a))
+        rm(YouTubeUpload, YouTubeUpload.story_id.in_(ch))
+        rm(Render, Render.story_id.in_(ch))
+        for model in (SEOVariant, ResearchPack, ReviewEvent, TelegramMessage, TelegramCallbackToken, Job):
+            rm(model, model.story_id.in_(ch))
+        rm(ScriptVersion, ScriptVersion.story_id.in_(ch))
+        rm(CostUsage, CostUsage.story_id.in_(ch))
+        rm(ErrorLog, ErrorLog.story_id.in_(ch))
+        rm(AgentMemory, AgentMemory.story_id.in_(ch))
+        files += [s.artifacts_dir / sid for sid in ch]
+    # bản viết lại trỏ tới bản gốc: gỡ liên kết trước rồi xoá cùng lúc
+    for ch in _chunks(story_ids):
+        session.execute(update(Story).where(Story.id.in_(ch)).values(parent_story_id=None)
+                        .execution_options(synchronize_session=False))
+    for ch in _chunks(story_ids):
+        rm(Story, Story.id.in_(ch))
+    # tư liệu DEMO không gắn video (thư viện ảnh DEMO)
+    demo_assets = list(session.scalars(select(Asset.id).where(Asset.is_demo.is_(True))))
+    for a in _chunks(demo_assets):
+        rm(AssetLicense, AssetLicense.asset_id.in_(a))
+        rm(Asset, Asset.id.in_(a))
+    for ch in _chunks(channel_ids):
+        rm(YouTubeUpload, YouTubeUpload.channel_id.in_(ch))
+    rm(YouTubeUpload, YouTubeUpload.is_demo.is_(True))
+    for ch in _chunks(news_ids):
+        rm(Claim, Claim.news_item_id.in_(ch))
+        rm(NewsItem, NewsItem.id.in_(ch), key="news_items")
+    for ch in _chunks(source_ids):
+        rm(Source, Source.id.in_(ch))
+    for ch in _chunks(channel_ids):
+        rm(Channel, Channel.id.in_(ch))
+    # bài luận DEMO + bộ nhớ AI sinh ra từ chúng (câu trả lời của thầy trên tư liệu giả lập, bản chủ kênh sửa)
+    essays = list(session.execute(select(Essay.id, Essay.memory_id).where(Essay.is_demo.is_(True))))
+    mem_ids = [m for _, m in essays if m]
+    owner_keys = [key_hash("owner-essay", eid) for eid, _ in essays]
+    for ch in _chunks(mem_ids):
+        rm(AgentMemory, AgentMemory.id.in_(ch))
+    for ch in _chunks(owner_keys):
+        rm(AgentMemory, AgentMemory.department == "bai_luan", AgentMemory.key_hash.in_(ch))
+    for ch in _chunks([e for e, _ in essays]):
+        rm(Essay, Essay.id.in_(ch))
+    # câu trả lời AI cho tin fixture (vd. tách claim bằng Claude thật khi đang DEMO): đề bài mang nhãn [DEMO]
+    rm(AgentMemory, AgentMemory.kind == "answer", or_(AgentMemory.request.like("%[DEMO]%"), AgentMemory.source == "demo"))
+    rm(CostUsage, CostUsage.is_demo.is_(True))
+    # Autopilot thường được bật trong lúc chạy thử DEMO → tắt để chủ kênh tự bật lại có chủ đích ở chế độ thật
+    from .models import AppSetting
+
+    ap = session.get(AppSetting, "autopilot_enabled")
+    autopilot_reset = bool(ap and ap.value)
+    if autopilot_reset:
+        ap.value = False
+    files += _demo_dirs()
+    counts = {k: v for k, v in counts.items() if v}
+    audit(session, actor, "demo.purge", "system", None, **{k: v for k, v in counts.items()}, autopilot_reset=autopilot_reset)
+    return {"deleted": counts, "total": sum(counts.values()), "autopilot_reset": autopilot_reset,
+            "files": [str(p) for p in files]}
+
+
+def remove_demo_files(paths: list[str]) -> int:
+    """Xoá file/thư mục DEMO sau khi DB đã commit. Chỉ xoá trong artifacts/ và media_library/; lỗi từng file → bỏ qua."""
+    import shutil
+
+    s = get_settings()
+    roots = [s.artifacts_dir.resolve(), s.media_library_dir.resolve()]
+    n = 0
+    for raw in paths:
+        p = Path(raw)
+        try:
+            rp = p.resolve()
+            if not any(rp != r and rp.is_relative_to(r) for r in roots) or not p.exists():
+                continue
+            shutil.rmtree(p) if p.is_dir() else p.unlink()
+            n += 1
+        except OSError:
+            continue
+    return n
+
+
+def purge_demo_if_production(actor: str = "system") -> dict | None:
+    """Lúc khởi động: APP_MODE=production (vd. đặt trong .env) mà DB còn dữ liệu DEMO → xoá. Không làm sập app nếu lỗi."""
+    import logging
+
+    from .db import SessionLocal
+
+    if get_settings().is_demo:
+        return None
+    log = logging.getLogger(__name__)
+    try:
+        with SessionLocal() as db:
+            if not demo_data_summary(db)["total"]:
+                return None
+            res = purge_demo_data(db, actor, force=True)  # lúc khởi động không có job nào đang chạy
+            db.commit()
+        res["files_removed"] = remove_demo_files(res.pop("files"))
+        log.info("Chế độ production: đã xoá %s dòng dữ liệu DEMO", res["total"])
+        return res
+    except Exception as ex:  # noqa: BLE001
+        log.warning("Không xoá được dữ liệu DEMO lúc khởi động: %s", ex, extra={"evcs_source": "config"})
+        return None
+
+
 PRODUCTION_SOURCES = [
     # Đầu mối gợi ý trong đặc tả. Feed URL cần chủ kênh kiểm tra (RSS chính thức nếu có) trước khi bật.
     {"name": "VinFast — Tin tức", "domain": "vinfastauto.com", "feed_url": None, "trust_tier": 1},

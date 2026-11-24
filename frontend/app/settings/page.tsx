@@ -18,7 +18,7 @@ export default function Settings() {
     <>
       <h2>Thiết lập & tài khoản</h2>
       <ErrorBox error={err || integ.error} />
-      <ConfigPanel />
+      <ConfigPanel onChanged={() => { integ.reload(); st.reload(); ch.reload(); src.reload(); }} />
       <h3>Tài khoản & tự động hoá</h3>
       <div className="grid g2">
         <Card title="Đăng nhập dashboard">
