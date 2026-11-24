@@ -23,10 +23,25 @@ export async function api<T = any>(path: string, init: RequestInit & { json?: an
   let body = init.body;
   if (init.json !== undefined) { headers["Content-Type"] = "application/json"; body = JSON.stringify(init.json); }
   const r = await fetch(`${API_BASE}${path}`, { ...init, headers, body, cache: "no-store" });
+  if (!r.ok) throw await errorFromResponse(r, path, init.method);
   const ct = r.headers.get("content-type") || "";
-  const data = ct.includes("application/json") ? await r.json() : await r.text();
-  if (!r.ok) throw new ApiError(r.status, (data as any)?.detail ?? data);
-  return data as T;
+  return (ct.includes("application/json") ? await r.json() : await r.text()) as T;
+}
+
+// Biến phản hồi lỗi thành thông báo ngắn. Không bao giờ đưa nguyên trang HTML (vd. trang 404 của Next.js) ra màn hình.
+export async function errorFromResponse(r: Response, path: string, method = "GET"): Promise<ApiError> {
+  const ct = r.headers.get("content-type") || "";
+  if (ct.includes("application/json")) {
+    const data = await r.json().catch(() => null);
+    return new ApiError(r.status, data?.detail ?? data ?? `HTTP ${r.status}`);
+  }
+  const text = await r.text().catch(() => "");
+  if (ct.includes("text/html") || /^\s*<(!doctype|html)/i.test(text)) {
+    return new ApiError(r.status, r.status === 404
+      ? `Máy chủ không có API ${method.toUpperCase()} ${path} (404). Thường do đã cập nhật code nhưng cửa sổ máy chủ cũ vẫn đang chạy: tắt cửa sổ đó (Ctrl+C) rồi mở lại start.bat.`
+      : `Máy chủ trả về lỗi ${r.status} khi gọi ${method.toUpperCase()} ${path}.`);
+  }
+  return new ApiError(r.status, text.slice(0, 500) || `HTTP ${r.status}`);
 }
 
 export const mediaUrl = (u?: string | null) => (u ? `${API_BASE}${u}` : "");

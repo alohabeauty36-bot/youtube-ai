@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..build_info import code_fingerprint
 from ..config import get_settings
 from ..db import init_db
 from ..errors import BlockedByCredentials, EVStudioError, GateBlocked
@@ -26,6 +27,7 @@ from ..state_machine import StoryState as S
 from .deps import Actor, current_actor, get_db, is_trusted_local, require_owner
 
 log = logging.getLogger(__name__)
+CODE_BUILD = code_fingerprint()  # phiên bản mã đang chạy trong bộ nhớ; run.py so sánh để phát hiện máy chủ cũ
 
 
 @asynccontextmanager
@@ -171,7 +173,7 @@ def health(db: Session = Depends(get_db)):
 
     s = get_settings()
     db.execute(select(1))
-    return {"status": "ok", "mode": s.app_mode, "ffmpeg": ffmpeg_available(), "time": now()}
+    return {"status": "ok", "mode": s.app_mode, "ffmpeg": ffmpeg_available(), "time": now(), "build": CODE_BUILD}
 
 
 @app.get("/api/system/integrations")
@@ -1295,6 +1297,19 @@ def config_test(service: str, send_test: bool = False, actor: Actor = Depends(re
     if service == "telegram":
         return TESTS[service](s, send_test=send_test)
     return TESTS[service](s)
+
+
+# ------------------------------------------------------------------ API không tồn tại → JSON 404 rõ ràng
+# Phải khai báo SAU mọi route /api/* ở trên và TRƯỚC khi gắn giao diện web; nếu không, đường dẫn /api lạ
+# rơi xuống StaticFiles và trả về nguyên trang 404 HTML của Next.js (giao diện in cả cục HTML ra màn hình).
+
+@app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False)
+def api_not_found(rest: str, request: Request):
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(status_code=404, content={"detail": (
+        f"Máy chủ không có API {request.method} /api/{rest}. Thường do đã cập nhật code nhưng cửa sổ máy chủ cũ "
+        "vẫn đang chạy: tắt cửa sổ đó (Ctrl+C) rồi mở lại start.bat.")})
 
 
 # ------------------------------------------------------------------ giao diện web (Next.js static export)
