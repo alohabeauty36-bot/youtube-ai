@@ -46,7 +46,8 @@ GROUPS = {
 
 FIELDS: list[ConfigField] = [
     ConfigField("app_mode", "Chế độ", "mode", "select", ("demo", "production"),
-                "demo: adapter giả lập gắn nhãn DEMO, không upload thật. production: dùng dịch vụ thật; thiếu key → video dừng ở BLOCKED_BY_CREDENTIALS."),
+                "demo: adapter giả lập gắn nhãn DEMO, không upload thật. production: dùng dịch vụ thật, "
+                "lưu sẽ XOÁ HẾT dữ liệu DEMO; thiếu key → video dừng ở BLOCKED_BY_CREDENTIALS."),
     ConfigField("public_base_url", "Địa chỉ truy cập ứng dụng", "mode", "text",
                 help="Dùng cho link xem trước trong Telegram và OAuth redirect. Chạy máy cá nhân: http://localhost:8010",
                 placeholder="http://localhost:8010"),
@@ -202,6 +203,7 @@ class SaveResult:
     updated: list[str] = field(default_factory=list)
     cleared: list[str] = field(default_factory=list)
     restart_needed: list[str] = field(default_factory=list)
+    demo_purged: dict | None = None  # có giá trị khi vừa chuyển sang production và đã xoá dữ liệu DEMO
 
 
 def save(session, values: dict[str, Any], clear: list[str], actor: str) -> SaveResult:
@@ -260,9 +262,20 @@ def save(session, values: dict[str, Any], clear: list[str], actor: str) -> SaveR
         if row:
             session.delete(row)
             res.cleared.append(name)
+    # Chọn chạy thật → xoá sạch dữ liệu DEMO, cùng một transaction với việc đổi chế độ (lỗi thì không đổi gì cả)
+    purge = None
+    if merged.get("app_mode") == "production" and ("app_mode" in staged or "app_mode" in clear):
+        from .demo import purge_demo_data
+
+        purge = purge_demo_data(session, actor)  # còn video DEMO đang chạy → DemoPurgeBlocked (ValueError)
     audit(session, actor, "config.update", "config", None, updated=",".join(res.updated), cleared=",".join(res.cleared))
     session.commit()
     reset_settings_cache()
+    if purge is not None:
+        from .demo import remove_demo_files
+
+        purge["files_removed"] = remove_demo_files(purge.pop("files"))
+        res.demo_purged = purge
     return res
 
 

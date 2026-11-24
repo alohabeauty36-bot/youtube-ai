@@ -34,6 +34,9 @@ CODE_BUILD = code_fingerprint()  # phiên bản mã đang chạy trong bộ nh�
 async def lifespan(app: FastAPI):
     setup_logging()
     init_db()
+    from ..demo import purge_demo_if_production
+
+    purge_demo_if_production()  # APP_MODE=production trong .env mà DB còn dữ liệu DEMO → xoá
     from ..services.telegram.callbacks import start_polling
     from ..workers.schedules import start_scheduler
 
@@ -1282,7 +1285,16 @@ def config_put(body: ConfigUpdate, db: Session = Depends(get_db), actor: Actor =
     except ValueError as e:
         db.rollback()
         raise HTTPException(400, str(e))
-    return {"updated": res.updated, "cleared": res.cleared, "restart_needed": res.restart_needed, **describe(db)}
+    return {"updated": res.updated, "cleared": res.cleared, "restart_needed": res.restart_needed,
+            "demo_purged": res.demo_purged, **describe(db)}
+
+
+@app.get("/api/demo-data")
+def demo_data(db: Session = Depends(get_db), actor: Actor = Depends(require_owner)):
+    """Dữ liệu DEMO sẽ bị xoá khi chuyển sang production (để hiện hộp xác nhận)."""
+    from ..demo import demo_data_summary
+
+    return demo_data_summary(db)
 
 
 @app.post("/api/config/test/{service}")
