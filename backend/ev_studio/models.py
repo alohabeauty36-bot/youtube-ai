@@ -419,3 +419,64 @@ class CostUsage(Base):
     unit_type: Mapped[str] = mapped_column(String(40))  # input_tokens|output_tokens|audio_seconds|cpu_seconds|bytes|quota_units
     estimated_usd: Mapped[float] = mapped_column(Float, default=0)
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+# ------------------------------------------------------------------ Ban Tài chính + bộ não phòng ban
+
+
+class BudgetLedger(Base):
+    """Sổ cái chi tiền AI. Ghi bằng session riêng và commit ngay, nên job rollback cũng không làm mất dấu tiền đã tiêu.
+
+    Mỗi lần gọi Claude/ChatGPT: giữ chỗ (reserved, ước tính trường hợp xấu nhất) → chốt (settled, số thật) hoặc huỷ (released).
+    """
+    __tablename__ = "budget_ledger"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+    department: Mapped[str] = mapped_column(String(30), index=True)
+    provider: Mapped[str] = mapped_column(String(20))  # anthropic | openai
+    model: Mapped[str] = mapped_column(String(80))
+    story_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    status: Mapped[str] = mapped_column(String(10), index=True)  # reserved | settled | released
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cache_write_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cache_read_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    usd: Mapped[float] = mapped_column(Float, default=0.0)
+    note: Mapped[str | None] = mapped_column(String(200))
+
+
+class AgentMemory(Base):
+    """Bộ nhớ dài hạn của từng phòng ban: câu hỏi + câu trả lời của thầy, bài học, kiến thức đã xác minh, sổ tay văn phong."""
+    __tablename__ = "agent_memories"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+    department: Mapped[str] = mapped_column(String(30), index=True)
+    kind: Mapped[str] = mapped_column(String(20), index=True)  # answer | lesson | knowledge | style_guide
+    key_hash: Mapped[str] = mapped_column(String(64), index=True)
+    source: Mapped[str] = mapped_column(String(20))  # anthropic | openai | local | owner | system
+    model: Mapped[str | None] = mapped_column(String(80))
+    request: Mapped[str | None] = mapped_column(Text)
+    response: Mapped[Any] = mapped_column(JSON, default=dict)
+    text: Mapped[str] = mapped_column(Text, default="")  # dạng chữ để truy xuất
+    quality: Mapped[float] = mapped_column(Float, default=0.0)
+    approved: Mapped[bool] = mapped_column(Boolean, default=False)
+    uses: Mapped[int] = mapped_column(Integer, default=0)
+    story_id: Mapped[str | None] = mapped_column(String(36), index=True)
+
+
+class AgentSkill(Base):
+    """Hồ sơ năng lực của một phòng ban: trò (model chạy máy) đã tự làm đạt bao nhiêu lần so với thầy."""
+    __tablename__ = "agent_skills"
+    department: Mapped[str] = mapped_column(String(30), primary_key=True)
+    mode: Mapped[str] = mapped_column(String(20), default="auto")  # auto | teacher_only | student_only
+    teacher_calls: Mapped[int] = mapped_column(Integer, default=0)
+    student_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    student_passes: Mapped[int] = mapped_column(Integer, default=0)
+    student_live: Mapped[int] = mapped_column(Integer, default=0)  # số lần trò tự làm thay thầy (không tốn tiền)
+    cache_hits: Mapped[int] = mapped_column(Integer, default=0)
+    recent: Mapped[list] = mapped_column(JSON, default=list)  # 1/0 của các lần thử gần nhất
+    similarity_avg: Mapped[float] = mapped_column(Float, default=0.0)
+    graduated: Mapped[bool] = mapped_column(Boolean, default=False)
+    saved_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    last_reflect_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)

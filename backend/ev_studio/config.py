@@ -43,7 +43,35 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr | None = None
     anthropic_model: str = "claude-sonnet-5-5"
     anthropic_max_tokens: int = 16000
-    writer_provider: Literal["auto", "demo", "anthropic"] = "auto"
+    writer_provider: Literal["auto", "demo", "anthropic", "agents"] = "auto"
+
+    # --- Ban Tài chính: ngân sách AI (USD). Đây là trần CỨNG: chạm trần thì không gọi Claude/ChatGPT nữa ---
+    budget_monthly_usd: float = 50.0
+    budget_safety_margin: float = 0.05  # giữ lại 5% trần tháng phòng sai số ước tính
+    budget_story_max_usd: float = 0.75  # trần chi cho một video (gồm cả các lần viết lại)
+    stories_per_day: int = 3  # Autopilot làm tối đa N tin/ngày
+    stories_per_day_min: int = 2  # mục tiêu tối thiểu; ngân sách ngày luôn chừa đủ cho số tin này
+    model_prices_json: str = ""  # ghi đè/bổ sung giá: {"ten-model": [gia_vao, gia_ra]} USD/1M token
+
+    # --- Bộ não phòng ban (agent học từ Claude/ChatGPT rồi tự viết bằng model chạy trên máy) ---
+    agents_enabled: bool = True
+    teacher_strategy: Literal["anthropic", "openai", "alternate"] = "anthropic"
+    model_claims: str = "claude-haiku-5-5"  # Phòng Săn tin: việc đơn giản → model rẻ
+    model_research: str = "claude-sonnet-5-5"
+    model_script: str = ""  # để trống = dùng anthropic_model
+    model_editor: str = "claude-haiku-5-5"
+    openai_api_key: SecretStr | None = None
+    openai_model: str = ""
+    openai_base_url: str = "https://api.openai.com/v1"
+    local_llm_url: str = ""  # Ollama, ví dụ http://localhost:11434 — để trống = chưa có "trò"
+    local_llm_model: str = "qwen2.5:7b-instruct"
+    local_llm_timeout_seconds: float = 1800
+    agent_shadow_learning: bool = True  # mỗi lần thầy làm, trò làm thử cùng đề để chấm điểm (miễn phí)
+    agent_shadow_async: bool = True
+    agent_graduation_window: int = 20
+    agent_graduation_min: int = 10
+    agent_graduation_rate: float = 0.8
+    agent_audit_rate: float = 0.15  # sau khi tốt nghiệp vẫn nhờ thầy chấm ngẫu nhiên 15% số việc
 
     # --- TTS ---
     tts_provider: Literal["auto", "demo", "vieneu_local", "vieneu_http"] = "auto"
@@ -82,7 +110,7 @@ class Settings(BaseSettings):
     score_shortlist: int = 75
     score_research: int = 60
     score_autopilot: int = 80
-    max_videos_per_week: int = 3
+    max_videos_per_week: int = 21
     scan_interval_hours: float = 3
     freshness_max_age_hours: float = 24
 

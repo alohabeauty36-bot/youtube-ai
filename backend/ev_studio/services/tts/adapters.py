@@ -5,6 +5,7 @@ import io
 import logging
 import re
 import threading
+import unicodedata
 import wave
 
 import httpx
@@ -58,6 +59,7 @@ class VieNeuLocalAdapter:
 
     def synthesize_one(self, text: str, voice: str) -> np.ndarray:
         eng = self._get()
+        voice = unicodedata.normalize("NFC", voice or "").strip()  # tên giọng gõ trên Windows/macOS có thể ở dạng NFD
         try:
             wav = eng.infer(text, voice=voice)
         except Exception as e:
@@ -119,6 +121,9 @@ class DemoTTSAdapter:
     name = "demo"
     is_demo = True
     model_version = "demo-tone-v1"
+    NOTICE = ("Đây là ÂM GIẢ LẬP (tiếng ù/bíp), KHÔNG phải giọng nói: máy chưa cài VieNeu-TTS. "
+              "Cài giọng thật: đóng ứng dụng rồi bấm đúp start-giong-that.bat (Windows) hoặc chạy `python run.py --with-tts`; "
+              "lần đọc đầu tiên cần Internet để tải model vài trăm MB. Video đã đọc bằng âm giả lập cần đọc lại.")
     SYLLABLE_SECONDS = 0.335
 
     def __init__(self, settings: Settings | None = None, fail_on: str | None = None):

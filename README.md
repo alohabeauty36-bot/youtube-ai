@@ -28,6 +28,8 @@ python run.py          # Windows: bấm đúp start.bat (hoặc: py run.py) · m
 | `--no-browser` | Không tự mở trình duyệt |
 | `--build-web` | Build lại giao diện từ `frontend/` (cần Node.js 20+, chỉ dành cho lập trình viên) |
 
+**Giọng đọc thật:** nếu chỉ chạy `start.bat`/`run.py` thường, máy chưa có VieNeu-TTS và audio là **âm giả lập (tiếng ù/bíp), không phải giọng nói**. Để có giọng thật: Windows bấm đúp **`start-giong-that.bat`**; macOS/Linux chạy `python run.py --with-tts`. Lần đọc đầu tiên cần Internet để tải model (vài trăm MB). Kiểm tra ở **Thiết lập → Giọng đọc VieNeu-TTS → Kiểm tra**: ứng dụng đọc thử một câu và phát cho bạn nghe, hoặc báo lỗi thật (chưa cài, không tải được model, sai tên giọng). Khi đã cài VieNeu, ứng dụng dùng giọng thật cả ở chế độ DEMO.
+
 Lần đầu, ứng dụng ở chế độ **DEMO**: mọi dữ liệu đều giả lập và gắn nhãn, không upload thật. Bạn bấm **Săn tin → Quét tin ngay** để xem cả quy trình hoạt động.
 
 ## 2. Cấu hình API ngay trong ứng dụng
@@ -47,14 +49,49 @@ Sau khi nhập key, đổi **Chế độ** sang `production`, rồi bấm **Kế
 
 **Truy cập:** khi mở trên chính máy chạy ứng dụng (127.0.0.1), bạn không cần mật khẩu. Khi truy cập từ máy khác, ứng dụng yêu cầu mật khẩu chủ kênh hoặc biên tập viên. Nếu ứng dụng nằm sau reverse proxy, các request có header proxy **không** được tin là truy cập cục bộ.
 
-**Dành cho lập trình viên:** `make test` chạy 97 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8010.
+**Dành cho lập trình viên:** `make test` chạy 118 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8010.
 
 ### Windows 11
 Nên dùng WSL2 (Ubuntu) với Docker Desktop. Cách native cũng chạy được với Python 3.12, FFmpeg (gyan.dev, có libass) và `pip install vieneu` (CPU/ONNX). GPU CUDA trên Windows cần cài `torch==2.8.0` cu128 trước, theo README của VieNeu.
 
 ## 3. Hai chế độ
 - **MANUAL:** chủ kênh chọn tin ở trang Săn tin. Pipeline dừng ở *Bản nháp kịch bản* để chờ duyệt, rồi dừng ở *Sẵn sàng tải RIÊNG TƯ* để chờ chủ kênh tick xác nhận và bấm upload.
-- **AUTOPILOT_PRIVATE** (bật trong Settings): tự chọn tin có điểm ≥ 80/100, mọi claim trọng yếu đã xác minh, tối đa 3 video/tuần. Pipeline chạy đến upload RIÊNG TƯ và Telegram, nhưng **dừng và chuyển sang `NEEDS_REVIEW`** nếu thiếu nguồn, claim đang tranh cãi, sai thời lượng sau 3 lần viết lại, QA không đạt, sai kênh, hoặc thiếu credential (`BLOCKED_BY_CREDENTIALS`).
+- **AUTOPILOT_PRIVATE** (bật trong Settings): tự chọn tin có điểm ≥ 80/100, mọi claim trọng yếu đã xác minh, tối đa 3 tin/ngày và chỉ khi Ban Tài chính còn đủ ngân sách. Pipeline chạy đến upload RIÊNG TƯ và Telegram, nhưng **dừng và chuyển sang `NEEDS_REVIEW`** nếu thiếu nguồn, claim đang tranh cãi, sai thời lượng sau 3 lần viết lại, QA không đạt, sai kênh, hoặc thiếu credential (`BLOCKED_BY_CREDENTIALS`).
+
+## 3b. Ngân sách AI và bộ não phòng ban
+
+### Ban Tài chính — trần chi tiêu cứng
+Mặc định **50 USD/tháng** cho Claude + ChatGPT (chỉnh ở **Thiết lập → Ngân sách AI**). Trước *mọi* lần gọi AI, ứng dụng giữ chỗ chi phí xấu nhất (token vào ước tính dư + toàn bộ `max_tokens` ra). Chạm bất kỳ trần nào thì **không gọi**, video dừng ở `NEEDS_REVIEW` với lý do `BLOCKED_BY_BUDGET`, bấm **Chạy tiếp** khi có ngân sách.
+
+| Trần | Mặc định | Ghi chú |
+|---|---|---|
+| Tháng | 50 USD, giữ lại 5% phòng sai số → chi tối đa 47,5 USD | cứng |
+| Ngày | phần còn lại của tháng ÷ số ngày còn lại, **không quá 2× bình quân** (~3,2 USD) | chống một ngày tiêu quá tay |
+| Phòng ban | Săn tin 15%, Nghiên cứu 25%, Biên kịch 50%, Biên tập 7%, Đào tạo 3% | một phòng không ăn hết phần của phòng khác |
+| Mỗi video | 0,75 USD (đủ cho ResearchPack + kịch bản + 3 lần viết lại) | |
+| Số tin | Autopilot tối đa **3 tin/ngày**, chỉ mở tin mới khi còn đủ tiền cho một video | |
+
+Sổ cái (`budget_ledger`) được ghi bằng session riêng và commit ngay, nên job lỗi hay rollback cũng không làm mất dấu tiền đã tiêu. Xem ở trang **Bộ não AI & Ngân sách**.
+
+Cách tiết kiệm đã bật sẵn: Phòng Săn tin dùng **Claude Haiku 5.5** (0,10/0,50 USD mỗi 1 triệu token), Nghiên cứu và Biên kịch dùng **Sonnet 5.5** (2/10 USD); prompt caching cho system prompt dài (đọc cache chỉ 5% giá); bỏ qua tin không thuộc chủ đề xe điện trước khi gọi AI; câu hỏi lặp lại lấy từ bộ nhớ ($0).
+
+**Ước tính** (bảng giá 11/2026, chưa đo với key thật): một video khoảng 0,25–0,35 USD (ResearchPack ~0,04 + kịch bản ~0,12 + trung bình một lần viết lại), tách claim ~0,001 USD/bài. 3 video/ngày × 30 ngày ≈ **25–32 USD/tháng**, dưới trần 50 USD.
+
+### Bộ não phòng ban — học từ Claude/ChatGPT rồi tự viết
+Mỗi phòng (Săn tin, Nghiên cứu, Biên kịch, Biên tập, Ban Đào tạo) là một bộ não độc lập: bộ nhớ riêng, bài học riêng, hồ sơ năng lực riêng, trần ngân sách riêng. Mỗi đề bài đi theo thứ tự:
+
+1. **Bộ nhớ** — đề y hệt đã hỏi thầy → dùng lại, $0.
+2. **Trò tự làm** — model mã nguồn mở chạy trên máy bạn qua [Ollama](https://ollama.com) (mặc định `qwen2.5:7b-instruct`), $0. Chỉ khi phòng đã **tốt nghiệp**; vẫn gửi thầy kiểm tra ngẫu nhiên 15% số việc.
+3. **Thầy** — Claude (hoặc ChatGPT nếu bật, có thể luân phiên cả hai), tốn tiền, luôn qua Ban Tài chính. Hết ngân sách → nhờ trò; trò không làm được → dừng.
+4. **Học** — câu trả lời của thầy được lưu. Trò làm thử cùng đề (miễn phí, chạy nền) và được chấm: đúng schema, qua QA nghiệp vụ, nội dung đủ giống thầy. Đạt ≥ 80% trong 20 lần gần nhất (tối thiểu 10) → tốt nghiệp. Trượt nhiều → tự hạ cấp.
+
+Nguồn học khác, không tốn tiền: kịch bản trượt Script QA (thành bài học, bản lỗi không được dùng lại), chủ kênh duyệt (bản duyệt thành ví dụ mẫu), chủ kênh yêu cầu sửa/loại (thành bài học), tốc độ đọc đo từ audio thật, claim đã xác minh (thành kho kiến thức). Mỗi Chủ nhật, Ban Đào tạo dùng Haiku đúc kết bài học thành **sổ tay văn phong** cho từng phòng.
+
+**Kỳ vọng thực tế:** model 7B chạy trên máy viết kém Claude một bậc rõ rệt, nhất là kịch bản 10 phút. Hệ thống không "biến thành Claude"; nó giảm số lần phải gọi Claude ở những việc trò đã làm đạt chuẩn, và mọi kịch bản do trò viết vẫn phải qua Script QA và chủ kênh duyệt. Thường Phòng Săn tin tốt nghiệp trước, Biên kịch sau cùng (hoặc không). Máy cần khoảng 8 GB RAM trống cho model 7B; chạy CPU mất vài phút cho một kịch bản. Ứng dụng **không fine-tune** model từ câu trả lời của Claude/ChatGPT (điều khoản của cả hai hạn chế việc này); "học" là bộ nhớ + truy xuất + bài học + ví dụ mẫu đưa vào prompt.
+
+Cài trò: cài Ollama → `ollama pull qwen2.5:7b-instruct` → **Thiết lập → Bộ não phòng ban → Địa chỉ Ollama** = `http://localhost:11434`. Mỗi phòng có thể đặt *Tự động*, *Chỉ nhờ thầy* hoặc *Chỉ trò tự làm* ở trang **Bộ não AI & Ngân sách**.
+
+Dùng thêm ChatGPT: nhập OpenAI API key, tên model, và **bắt buộc** khai giá trong *Bảng giá bổ sung*, ví dụ `{"ten-model": [gia_vao, gia_ra]}` (USD/1 triệu token). Không biết giá thì Ban Tài chính từ chối gọi.
 
 ## 4. Kiến trúc
 
@@ -74,9 +111,10 @@ prompts/pillars/P1|P2|P3.md       hồ sơ trụ cột
 prompts/reference/…               Mục IV nguyên văn (tham khảo văn phong)
 frontend/                         Next.js 15 + TypeScript (xuất tĩnh → backend/ev_studio/web_dist, backend phục vụ)
 migrations/                       Alembic
-tests/                            97 test
+tests/                            118 test
 run.py, start.bat, start.sh       chạy bằng một lệnh
 backend/ev_studio/runtime_config.py  cấu hình API lưu mã hoá trong DB
+backend/ev_studio/agents/            Ban Tài chính (budget, pricing) + bộ não phòng ban (brain, memory, teachers, learning, writer)
 backend/ev_studio/error_log.py       Nhật ký lỗi: WARNING+ của ev_studio.* → bảng error_logs (che secret, gộp lỗi trùng)
 ```
 
@@ -92,7 +130,7 @@ backend/ev_studio/error_log.py       Nhật ký lỗi: WARNING+ của ev_studio.
 - **Nhật ký lỗi** (menu bên trái): mọi cảnh báo và lỗi của tool — quét tin, Claude, giọng đọc, tư liệu, dựng video, YouTube, Telegram, lịch chạy, API — được ghi lại kèm thời gian, số lần lặp, video và job liên quan, traceback và **gợi ý xử lý** bằng tiếng Việt. Lọc theo mức độ, nguồn, thời gian hoặc tìm kiếm. Bấm **Đã xử lý** khi đã khắc phục (nếu lỗi tái phát sẽ mở nhóm mới). **Sao chép báo cáo lỗi** để gửi cho người hỗ trợ. Key và token luôn được che trước khi lưu. Bảng giữ tối đa 5.000 nhóm lỗi gần nhất; nút **Xoá lỗi đã xử lý** chỉ xoá lỗi đã đánh dấu. Bảng điều khiển hiện cảnh báo khi còn lỗi chưa xử lý, và trang video có đường dẫn tới lỗi của riêng video đó.
 - **Kiểm tra định kỳ:** `PYTHONPATH=backend python3 scripts/check_privacy.py` (sẽ fail nếu có video nào không private mà chưa được ghi nhận là chủ kênh tự công khai).
 - **Chi phí** (ước tính, tham khảo):
-  - Claude: mỗi video khoảng 15–30 nghìn token vào và 6–10 nghìn token ra (ResearchPack, kịch bản, tối đa 3 lần viết lại thời lượng). Xem `/api/costs`; đơn giá chỉnh trong `services/llm.py`.
+  - Claude/ChatGPT: xem mục 3b. Trần cứng theo tháng/ngày/phòng ban/video; sổ cái ở `/api/budget`, bảng giá ở `agents/pricing.py` (bổ sung qua `model_prices_json`).
   - VieNeu: chạy CPU, khoảng 1–3 lần thời gian thực cho 10 phút audio (tuỳ CPU). Có GPU thì nhanh hơn nhiều.
   - Render: khoảng 3–6 phút CPU cho mỗi video 10 phút 1080p (preset veryfast).
   - YouTube: quota `videos.insert` dùng bucket riêng từ 11/2026, xem số hiện hành trong Google Cloud Console.

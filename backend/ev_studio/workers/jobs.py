@@ -69,9 +69,10 @@ def record_cost(session: Session, story: Story | None, job_type: str, usage: dic
         return
     usd = estimate_usd(usage)
     sid = story.id if story else None
-    session.add(CostUsage(story_id=sid, job_type=job_type, service="anthropic", units=usage.get("input_tokens", 0),
+    svc = usage.get("provider") or "anthropic"
+    session.add(CostUsage(story_id=sid, job_type=job_type, service=svc, units=usage.get("input_tokens", 0),
                           unit_type="input_tokens", estimated_usd=usd, is_demo=is_demo))
-    session.add(CostUsage(story_id=sid, job_type=job_type, service="anthropic", units=usage.get("output_tokens", 0),
+    session.add(CostUsage(story_id=sid, job_type=job_type, service=svc, units=usage.get("output_tokens", 0),
                           unit_type="output_tokens", estimated_usd=0, is_demo=is_demo))
 
 
@@ -151,7 +152,7 @@ def research_job(session: Session, story: Story, p: Providers) -> dict:
                     "published_at": news.published_at.isoformat() if news.published_at else None,
                     "effective_from": news.effective_from.isoformat() if news.effective_from else None,
                     "effective_to": news.effective_to.isoformat() if news.effective_to else None},
-           "sources": sources, "claims": usable, "recent_topics": recent, "pillar": story.pillar}
+           "sources": sources, "claims": usable, "recent_topics": recent, "pillar": story.pillar, "story_id": story.id}
     w = p.get_writer()
     llm, usage = w.research_pack(ctx)
     record_cost(session, story, "ResearchJob", usage, w.is_demo)
@@ -186,12 +187,21 @@ def script_job(session: Session, story: Story, p: Providers, actual_audio_second
            "recent_topics": recent_topics, "core_question": story.core_question or story.topic,
            "special_requests": story.editorial_notes, "target_duration_seconds": s.duration_target_seconds,
            "actual_audio_seconds": actual_audio_seconds,
-           "previous_spoken_script": prev.spoken_script if (prev and actual_audio_seconds) else None}
+           "previous_spoken_script": prev.spoken_script if (prev and actual_audio_seconds) else None, "story_id": story.id}
     w = p.get_writer()
     out, usage = w.write_script(ctx)
     record_cost(session, story, "ScriptJob", usage, w.is_demo)
-    return save_script_version(session, story, out, created_by=w.name, model=getattr(w, "model", w.name),
-                               is_demo=w.is_demo, change_note=f"Viết lại theo ACTUAL_AUDIO_SECONDS={actual_audio_seconds}" if actual_audio_seconds else "Bản đầu")
+    by = w.name if usage.get("source") in (None, "anthropic", "openai") else f"{w.name}:{usage['source']}"
+    try:
+        return save_script_version(session, story, out, created_by=by, model=usage.get("model") or getattr(w, "model", w.name),
+                                   is_demo=w.is_demo, change_note=f"Viết lại theo ACTUAL_AUDIO_SECONDS={actual_audio_seconds}" if actual_audio_seconds else "Bản đầu")
+    except GateBlocked as e:
+        if not w.is_demo:
+            from ..agents import learning
+
+            learning.on_script_qa_failed(session, story.id, e.reasons)
+            session.commit()
+        raise
 
 
 def save_script_version(session: Session, story: Story, out: dict, *, created_by: str, model: str | None, is_demo: bool,
@@ -246,6 +256,10 @@ def tts_job(session: Session, story: Story, p: Providers) -> dict:
     if not (s.duration_min_seconds <= m.duration <= s.duration_max_seconds):
         session.commit()  # lưu duration đo thật để hiển thị
         raise DurationOutOfRange(m.duration)
+    if not tts.is_demo:
+        from ..agents import learning
+
+        learning.on_audio_measured(session, sv.word_count, m.duration)  # Phòng Biên kịch học tốc độ đọc thật
     return out
 
 
@@ -713,10 +727,19 @@ def run_pipeline(story_id: str, providers: Providers | None = None, actor: str =
             while story.state == S.SCRIPT_APPROVED_FOR_RENDER.value:
                 sv = current_script(session, story)
                 try:
-                    _step(session, story, "TTSJob", input_hash(sv.id, get_setting(session, "voice", s.vieneu_voice)), tts_job, p)
+                    try:
+                        tts_ver = p.get_tts().model_version  # đổi bộ đọc (vd: demo → VieNeu) thì phải đọc lại
+                    except BlockedByCredentials:
+                        tts_ver = "unavailable"
+                    _step(session, story, "TTSJob", input_hash(sv.id, get_setting(session, "voice", s.vieneu_voice), tts_ver),
+                          tts_job, p)
                     transition(session, story, S.TTS_DONE, actor)
                     session.commit()
                 except DurationOutOfRange as e:
+                    session.commit()
+                    from ..agents import learning
+
+                    learning.on_audio_measured(session, sv.word_count, e.seconds)
                     session.commit()
                     revisions += 1
                     if revisions > s.max_script_revisions:
@@ -833,14 +856,18 @@ def apply_review(session: Session, story: Story, action: str, actor: str, via: s
     ev = ReviewEvent(story_id=story.id, action=action, actor=actor, via=via, note=note)
     session.add(ev)
     out: dict = {"story_id": story.id}
+    from ..agents import learning
+
     if action == "approve":
         transition(session, story, S.APPROVED_PRIVATE, actor, "Đã kiểm duyệt — video VẪN RIÊNG TƯ")
     elif action == "request_revision":
         new = create_revision(session, story, note or "", actor)
         ev.new_story_id = new.id
         out["new_story_id"] = new.id
+        learning.on_revision_requested(session, story, note or "")
     elif action == "reject":
         transition(session, story, S.REJECTED, actor)
+        learning.on_rejected(session, story, note)
     else:
         raise GateBlocked(f"Hành động không hợp lệ: {action}")
     out["state"] = story.state
@@ -870,6 +897,11 @@ def autopilot_tick(session: Session, providers: Providers | None = None) -> dict
                                                              Story.created_at >= now() - timedelta(days=7))) or 0
     if week >= s.max_videos_per_week:
         return {"ran": False, "reason": f"Đã đạt {s.max_videos_per_week} video/tuần"}
+    from ..agents import budget
+
+    ok, why = budget.can_start_story(session)  # Ban Tài chính: tối đa N tin/ngày và phải còn đủ tiền cho một video
+    if not ok:
+        return {"ran": False, "reason": why}
     used = {x for (x,) in session.execute(select(Story.news_item_id))}
     cands = session.scalars(select(NewsItem).where(NewsItem.status == "shortlist", NewsItem.score >= s.score_autopilot)
                             .order_by(NewsItem.score.desc()))

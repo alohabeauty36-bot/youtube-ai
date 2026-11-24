@@ -14,23 +14,36 @@ def _forbid_demo_in_prod(settings: Settings, what: str, choice: str) -> None:
 
 
 def get_writer(settings: Settings | None = None, client: Any = None):
-    from .services.claude_writer import AnthropicWriter, DemoWriter
+    """Mọi bộ viết thật đều đi qua các phòng ban (AgentWriter) → luôn có trần ngân sách + bộ nhớ.
+    writer_provider=anthropic: chỉ dùng thầy Claude, không có trò chạy máy (vẫn bị Ban Tài chính kiểm soát)."""
+    from .agents.writer import AgentWriter
+    from .services.claude_writer import DemoWriter
 
     s = settings or get_settings()
     choice = s.writer_provider
     _forbid_demo_in_prod(s, "Claude writer", choice)
-    if choice == "demo" or (choice == "auto" and s.is_demo and not s.anthropic_api_key):
+    if choice == "demo" or (choice == "auto" and s.is_demo and not s.anthropic_api_key and not s.local_llm_url):
         return DemoWriter()
-    return AnthropicWriter(s, client=client)  # raise BlockedByCredentials nếu thiếu key
+    if choice == "anthropic":
+        s = s.model_copy(update={"local_llm_url": "", "teacher_strategy": "anthropic"})
+    return AgentWriter(s, anthropic_client=client)  # raise BlockedByCredentials nếu không có thầy lẫn trò
+
+
+def vieneu_installed() -> bool:
+    import importlib.util
+
+    return importlib.util.find_spec("vieneu") is not None
 
 
 def get_tts(settings: Settings | None = None):
+    """auto: có thư viện VieNeu thì LUÔN dùng giọng thật (kể cả chế độ demo — demo chỉ cấm upload thật);
+    chưa cài thì demo dùng âm giả lập (không phải giọng nói), production báo BLOCKED_BY_CREDENTIALS."""
     from .services.tts.adapters import DemoTTSAdapter, VieNeuHttpAdapter, VieNeuLocalAdapter
 
     s = settings or get_settings()
     choice = s.tts_provider
     _forbid_demo_in_prod(s, "TTS", choice)
-    if choice == "demo" or (choice == "auto" and s.is_demo):
+    if choice == "demo" or (choice == "auto" and s.is_demo and not vieneu_installed()):
         return DemoTTSAdapter(s)
     if choice == "vieneu_http":
         return VieNeuHttpAdapter(s)

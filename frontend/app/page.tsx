@@ -6,6 +6,7 @@ import { Badge, Card, DemoBanner, ErrorBox, STATE_LABEL, useLoad } from "@/compo
 
 export default function Dashboard() {
   const { data, error, reload } = useLoad<any>("/api/dashboard");
+  const bud = useLoad<any>("/api/budget");
   const [busy, setBusy] = useState(""); const [err, setErr] = useState<any>(null); const [msg, setMsg] = useState("");
   const act = async (k: string, fn: () => Promise<any>) => {
     setBusy(k); setErr(null);
@@ -24,7 +25,7 @@ export default function Dashboard() {
           <div className="row"><Badge kind={st?.autopilot_enabled ? "ok" : "info"}>{st?.autopilot_enabled ? "Đang bật" : "Đang tắt"}</Badge>
             <button disabled={!!busy} onClick={() => act("ap", () => api("/api/settings", { method: "PATCH", json: { autopilot_enabled: !st?.autopilot_enabled } }))}>
               {st?.autopilot_enabled ? "Tắt" : "Bật"}</button></div>
-          <p className="small muted">Tự chọn tin ≥ {st?.score_autopilot}/100 đủ chứng cứ → dựng → tải lên RIÊNG TƯ → Telegram. Tối đa {st?.max_videos_per_week} video/tuần.</p>
+          <p className="small muted">Tự chọn tin ≥ {st?.score_autopilot}/100 đủ chứng cứ → dựng → tải lên RIÊNG TƯ → Telegram. Tối đa {bud.data?.stories_per_day ?? "—"} tin/ngày, luôn trong trần ngân sách.</p>
           <button disabled={!!busy || !st?.autopilot_enabled} onClick={() => act("tick", () => api("/api/autopilot/tick", { method: "POST" }))}>Chạy 1 vòng ngay</button>
         </Card>
         <Card title="Lịch quét tin">
@@ -34,7 +35,9 @@ export default function Dashboard() {
           <button style={{ marginTop: 8 }} disabled={!!busy} onClick={() => act("scan", () => api("/api/sources/scan", { method: "POST" }))}>
             {busy === "scan" ? "Đang quét…" : "Quét tin ngay"}</button>
         </Card>
-        <Card title="Chi phí API ước tính"><div className="kpi">${data?.cost_usd ?? 0}</div><Link href="/analytics">Chi tiết →</Link></Card>
+        <Card title="Ngân sách AI tháng này"><div className="kpi">${(bud.data?.spent_month_usd ?? 0).toFixed(2)} <span className="small muted">/ ${bud.data?.monthly_cap_usd ?? 50}</span></div>
+          <p className="small muted">Hôm nay ${(bud.data?.spent_today_usd ?? 0).toFixed(2)} / ${(bud.data?.allowance_today_usd ?? 0).toFixed(2)} · {bud.data?.stories_today ?? 0}/{bud.data?.stories_per_day ?? 3} tin</p>
+          <Link href="/agents">Bộ não AI & Ngân sách →</Link></Card>
       </div>
       {msg && <pre className="small">{msg}</pre>}
       {data?.open_errors?.total > 0 && <div className={(data.open_errors.ERROR || 0) + (data.open_errors.CRITICAL || 0) > 0 ? "error row" : "hint row"}>
