@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 
 from ..config import Settings
-from ..security import redact
+from ..security import redact, sign_link
 
 
 def _ok(msg: str, **extra) -> dict:
@@ -81,25 +81,49 @@ def test_pexels(s: Settings, client: httpx.Client | None = None) -> dict:
 
 
 def test_tts(s: Settings, client: httpx.Client | None = None) -> dict:
-    p = s.tts_provider
-    if p == "vieneu_http":
-        c = client or httpx.Client(timeout=10)
-        try:
-            r = c.get(s.vieneu_http_url.rstrip("/") + "/health")
-            voices = c.get(s.vieneu_http_url.rstrip("/") + "/v1/voices").json() if r.status_code == 200 else None
-        except (httpx.HTTPError, ValueError) as e:
-            return _fail(f"Không kết nối được server VieNeu tại {s.vieneu_http_url}: {type(e).__name__}")
-        return _ok("Server VieNeu hoạt động.", voices=voices) if r.status_code == 200 else _fail(f"Server VieNeu trả {r.status_code}")
-    if p in ("vieneu_local",) or (p == "auto" and not s.is_demo):
-        try:
-            import importlib.metadata as md
+    """Đọc thử MỘT câu bằng đúng bộ đọc mà pipeline sẽ dùng → lộ ngay lỗi thật (chưa cài, thiếu model, sai tên giọng…)."""
+    import time
 
-            import vieneu  # noqa: F401
-            return _ok(f"Đã cài vieneu {md.version('vieneu')}. Model sẽ tải lần đầu khi đọc (vài trăm MB). "
-                       "Dùng 'Nghe thử 30 giây' ở trang Biên tập để kiểm tra giọng.")
-        except ImportError:
-            return _fail("Chưa cài thư viện VieNeu. Chạy: python run.py --with-tts  (hoặc pip install vieneu==3.8.5)")
-    return _ok("Đang dùng TTS DEMO (âm thanh giả lập, không phải giọng nói). Chọn vieneu_local hoặc vieneu_http để dùng giọng thật.")
+    import numpy as np
+
+    from ..errors import BlockedByCredentials
+    from ..providers import get_tts
+    from .tts.adapters import DemoTTSAdapter, VieNeuHttpAdapter
+    from .tts.pipeline import segment_qc, write_wav
+
+    try:
+        tts = get_tts(s)
+    except BlockedByCredentials as e:
+        return _fail(f"{e}. Cách cài: đóng ứng dụng, chạy `python run.py --with-tts` "
+                     "(Windows: bấm đúp start-giong-that.bat) rồi mở lại.")
+    if isinstance(tts, VieNeuHttpAdapter) and client is not None:
+        tts.client = client
+    if isinstance(tts, DemoTTSAdapter):
+        return _fail(DemoTTSAdapter.NOTICE, demo=True)
+    text = "Xin chào, đây là giọng đọc thử của kênh xe điện. Nếu bạn nghe rõ câu này, giọng đọc đã sẵn sàng."
+    t0 = time.time()
+    try:
+        audio = np.asarray(tts.synthesize_one(text, s.vieneu_voice), dtype=np.float32).reshape(-1)
+    except Exception as e:  # noqa: BLE001 - báo nguyên nhân thật cho chủ kênh
+        hint = ""
+        msg = f"{type(e).__name__}: {e}"
+        if "not found" in msg.lower() and "voice" in msg.lower():
+            hint = " Tên giọng không có trong model — chọn lại ở ô 'Giọng mặc định'."
+        elif isinstance(tts, VieNeuHttpAdapter):
+            hint = f" Kiểm tra server VieNeu tại {s.vieneu_http_url} đang chạy."
+        else:
+            hint = (" Lần đầu VieNeu cần Internet để tải model từ HuggingFace (vài trăm MB); "
+                    "kiểm tra mạng/tường lửa rồi bấm Kiểm tra lại.")
+        return _fail(f"Không đọc được câu thử với giọng '{s.vieneu_voice}': {msg[:400]}.{hint}")
+    sr = tts.sample_rate
+    qc = segment_qc(audio, sr, text)
+    out = s.artifacts_dir / "_tts_test" / "test.wav"
+    write_wav(out, audio, sr)
+    secs = round(time.time() - t0, 1)
+    base = {"engine": tts.name, "voice": s.vieneu_voice, "qc": qc, "seconds_to_generate": secs, "audio_url": "/api/voices/test-audio?t=" + sign_link("media", "tts-test", 3600) + f"&v={int(t0)}"}
+    if not qc["ok"]:
+        return _fail(f"Có tạo audio nhưng chất lượng bất thường: {', '.join(qc['issues'])}. Nghe thử bên dưới.", **base)
+    return _ok(f"Giọng '{s.vieneu_voice}' ({tts.name}) đọc tốt: {qc['duration']}s audio, mất {secs}s để tạo. Nghe thử bên dưới.", **base)
 
 
 def test_youtube(s: Settings) -> dict:

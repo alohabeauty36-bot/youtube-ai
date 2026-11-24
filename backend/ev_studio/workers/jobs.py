@@ -727,7 +727,12 @@ def run_pipeline(story_id: str, providers: Providers | None = None, actor: str =
             while story.state == S.SCRIPT_APPROVED_FOR_RENDER.value:
                 sv = current_script(session, story)
                 try:
-                    _step(session, story, "TTSJob", input_hash(sv.id, get_setting(session, "voice", s.vieneu_voice)), tts_job, p)
+                    try:
+                        tts_ver = p.get_tts().model_version  # đổi bộ đọc (vd: demo → VieNeu) thì phải đọc lại
+                    except BlockedByCredentials:
+                        tts_ver = "unavailable"
+                    _step(session, story, "TTSJob", input_hash(sv.id, get_setting(session, "voice", s.vieneu_voice), tts_ver),
+                          tts_job, p)
                     transition(session, story, S.TTS_DONE, actor)
                     session.commit()
                 except DurationOutOfRange as e:

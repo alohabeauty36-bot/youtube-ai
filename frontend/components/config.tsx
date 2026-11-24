@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, mediaUrl } from "@/lib/api";
 import { Badge, Card, ErrorBox } from "@/components/ui";
 
 type Field = { key: string; label: string; group: string; kind: string; options: string[]; help: string; placeholder: string;
@@ -95,6 +95,8 @@ function TestResult({ g, r, onPick, onSend, current }: { g: string; r: any; onPi
       {g === "telegram" && r.ok && <div style={{ marginTop: 6 }}><button onClick={onSend}>Gửi tin nhắn thử tới chat được phép</button>
         {r.sent?.map((x: any) => <div key={x.chat_id}>{x.chat_id}: {x.ok ? "đã gửi" : x.error}</div>)}</div>}
       {g === "youtube" && r.registered && <div>Đang đăng ký: {r.registered.join(", ") || "(trống)"}</div>}
+      {g === "tts" && r.audio_url && <div style={{ marginTop: 6 }}><audio controls autoPlay src={mediaUrl(r.audio_url)} style={{ width: "100%" }} />
+        {r.qc && <div className="muted">Độ to (RMS) {r.qc.rms} · đỉnh {r.qc.peak} · {r.qc.chars_per_sec} ký tự/giây</div>}</div>}
     </div>
   );
 }

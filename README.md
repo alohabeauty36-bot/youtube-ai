@@ -28,6 +28,8 @@ python run.py          # Windows: bấm đúp start.bat (hoặc: py run.py) · m
 | `--no-browser` | Không tự mở trình duyệt |
 | `--build-web` | Build lại giao diện từ `frontend/` (cần Node.js 20+, chỉ dành cho lập trình viên) |
 
+**Giọng đọc thật:** nếu chỉ chạy `start.bat`/`run.py` thường, máy chưa có VieNeu-TTS và audio là **âm giả lập (tiếng ù/bíp), không phải giọng nói**. Để có giọng thật: Windows bấm đúp **`start-giong-that.bat`**; macOS/Linux chạy `python run.py --with-tts`. Lần đọc đầu tiên cần Internet để tải model (vài trăm MB). Kiểm tra ở **Thiết lập → Giọng đọc VieNeu-TTS → Kiểm tra**: ứng dụng đọc thử một câu và phát cho bạn nghe, hoặc báo lỗi thật (chưa cài, không tải được model, sai tên giọng). Khi đã cài VieNeu, ứng dụng dùng giọng thật cả ở chế độ DEMO.
+
 Lần đầu, ứng dụng ở chế độ **DEMO**: mọi dữ liệu đều giả lập và gắn nhãn, không upload thật. Bạn bấm **Săn tin → Quét tin ngay** để xem cả quy trình hoạt động.
 
 ## 2. Cấu hình API ngay trong ứng dụng
@@ -47,7 +49,7 @@ Sau khi nhập key, đổi **Chế độ** sang `production`, rồi bấm **Kế
 
 **Truy cập:** khi mở trên chính máy chạy ứng dụng (127.0.0.1), bạn không cần mật khẩu. Khi truy cập từ máy khác, ứng dụng yêu cầu mật khẩu chủ kênh hoặc biên tập viên. Nếu ứng dụng nằm sau reverse proxy, các request có header proxy **không** được tin là truy cập cục bộ.
 
-**Dành cho lập trình viên:** `make test` chạy 114 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8010.
+**Dành cho lập trình viên:** `make test` chạy 118 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8010.
 
 ### Windows 11
 Nên dùng WSL2 (Ubuntu) với Docker Desktop. Cách native cũng chạy được với Python 3.12, FFmpeg (gyan.dev, có libass) và `pip install vieneu` (CPU/ONNX). GPU CUDA trên Windows cần cài `torch==2.8.0` cu128 trước, theo README của VieNeu.
@@ -109,7 +111,7 @@ prompts/pillars/P1|P2|P3.md       hồ sơ trụ cột
 prompts/reference/…               Mục IV nguyên văn (tham khảo văn phong)
 frontend/                         Next.js 15 + TypeScript (xuất tĩnh → backend/ev_studio/web_dist, backend phục vụ)
 migrations/                       Alembic
-tests/                            114 test
+tests/                            118 test
 run.py, start.bat, start.sh       chạy bằng một lệnh
 backend/ev_studio/runtime_config.py  cấu hình API lưu mã hoá trong DB
 backend/ev_studio/agents/            Ban Tài chính (budget, pricing) + bộ não phòng ban (brain, memory, teachers, learning, writer)

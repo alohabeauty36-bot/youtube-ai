@@ -500,11 +500,22 @@ def voices(actor: Actor = Depends(current_actor)):
 
     try:
         t = get_tts()
-        return {"provider": t.name, "is_demo": t.is_demo, "voices": t.list_voices()}
+        return {"provider": t.name, "is_demo": t.is_demo, "voices": t.list_voices(),
+                "notice": getattr(t, "NOTICE", None) if t.is_demo else None}
     except BlockedByCredentials as e:
         from ..services.tts.adapters import VIENEU_V3TURBO_PRESETS
 
         return {"provider": "unavailable", "error": str(e), "voices": [{"label": v, "voice_id": v} for v in VIENEU_V3TURBO_PRESETS]}
+
+
+@app.get("/api/voices/test-audio")
+def voice_test_audio(t: str = Query(...)):
+    if not verify_link("media", "tts-test", t):
+        raise HTTPException(403, "Link hết hạn hoặc không hợp lệ")
+    p = get_settings().artifacts_dir / "_tts_test" / "test.wav"
+    if not p.exists():
+        raise HTTPException(404, "Chưa có câu đọc thử — bấm 'Kiểm tra' ở mục Giọng đọc")
+    return FileResponse(p, media_type="audio/wav", headers={"Cache-Control": "no-store"})
 
 
 @app.post("/api/stories/{sid}/assets/search")

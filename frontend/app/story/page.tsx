@@ -1,11 +1,13 @@
 "use client";
+import Link from "next/link";
 import { Suspense, useState } from "react";
 import { api, fmtTime, mediaUrl } from "@/lib/api";
-import { Badge, Card, ErrorBox } from "@/components/ui";
+import { Badge, Card, ErrorBox, useLoad } from "@/components/ui";
 import { StoryHeader, useStory } from "@/components/story";
 
 function Editor() {
   const { data: s, error, reload } = useStory();
+  const voices = useLoad<any>("/api/voices");
   const [edit, setEdit] = useState<string | null>(null); const [err, setErr] = useState<any>(null);
   const [sample, setSample] = useState<string>(""); const [busy, setBusy] = useState("");
   const sc = s?.script; const content = sc?.content;
@@ -37,6 +39,7 @@ function Editor() {
               <p><b>Câu hỏi trung tâm:</b> {s.core_question}</p></div> : <p className="muted">Chưa có.</p>}
           </Card>
           <Card title="Audio (VieNeu-TTS)" right={sc?.actual_audio_seconds && <Badge kind={sc.actual_audio_seconds >= 570 && sc.actual_audio_seconds <= 630 ? "ok" : "warn"}>{fmtTime(sc.actual_audio_seconds)} đo thật</Badge>}>
+            {voices.data?.is_demo && <div className="error small">🔇 {voices.data.notice} <Link href="/settings">Mở Thiết lập → Giọng đọc → Kiểm tra</Link></div>}
             {s.audio_url && <audio controls src={mediaUrl(s.audio_url)} style={{ width: "100%" }} />}
             <div className="row" style={{ marginTop: 8 }}>
               <button disabled={!sc || !!busy} onClick={async () => { const r = await call("sample", () => api(`/api/stories/${s.id}/tts/sample`, { method: "POST" })); if (r?.url) setSample(mediaUrl(r.url)); }}>
