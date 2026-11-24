@@ -54,3 +54,7 @@ pre.trace { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace
 details > summary { cursor:pointer; color:var(--muted); margin:6px 0 } code { font-family:ui-monospace, Menlo, Consolas, monospace; font-size:12px }
 button.small { padding:4px 9px; font-size:12px }
 .err-row .meta > *:not(:first-child)::before { content:" · "; color:var(--muted) }
+
+.bar { height:8px; background:#0d1626; border:1px solid var(--line); border-radius:999px; overflow:hidden; margin:6px 0 }
+.bar > div { height:100%; background:var(--ok, #2fbf71); border-radius:999px } .bar > div.warn{ background:var(--warn, #e0a526) } .bar > div.bad{ background:var(--bad, #d9534f) }
+details summary { cursor:pointer; margin-top:6px }

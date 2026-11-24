@@ -413,10 +413,15 @@ def patch_script(svid: str, body: ScriptPatch, db: Session = Depends(get_db), ac
         paras = paragraphs(content["spoken_script"])
         if not 0 <= body.rewrite_paragraph_index < len(paras):
             raise HTTPException(400, "Chỉ số đoạn không hợp lệ")
+        from ..workers.jobs import record_cost
+
         w = Providers().get_writer()
         rp = latest_pack(db, st)
-        new_p, _ = w.rewrite_paragraph({"pillar": st.pillar, "research_pack": rp.content, "core_question": st.core_question},
-                                       paras[body.rewrite_paragraph_index], body.rewrite_instruction or "viết gọn hơn")
+        db.commit()  # nhả khoá ghi trước khi gọi AI (Ban Tài chính cần ghi sổ cái)
+        new_p, usage = w.rewrite_paragraph({"pillar": st.pillar, "research_pack": rp.content, "core_question": st.core_question,
+                                            "story_id": st.id},
+                                           paras[body.rewrite_paragraph_index], body.rewrite_instruction or "viết gọn hơn")
+        record_cost(db, st, "RewriteParagraph", usage, w.is_demo)
         teaser = content.get("closing_teaser", "")
         paras[body.rewrite_paragraph_index] = new_p
         content["spoken_script"] = "\n\n".join(paras)
@@ -457,6 +462,10 @@ def approve_script(svid: str, db: Session = Depends(get_db), actor: Actor = Depe
         transition(db, st, S.SCRIPT_DRAFT, actor.name, "Biên tập viên xử lý")
     st.script_approved_by = actor.name
     audit(db, actor.name, "script.approve", "script_version", sv.id)
+    if not sv.is_demo:
+        from ..agents import learning
+
+        learning.on_script_approved(db, st, sv)  # bản đã duyệt → ví dụ mẫu cho các phòng ban
     db.commit()
     return _submit(st, actor)
 
@@ -824,6 +833,102 @@ def costs(db: Session = Depends(get_db), actor: Actor = Depends(current_actor)):
     return {"by_service": [{"service": a, "unit_type": b, "units": c, "usd": round(d or 0, 4), "is_demo": bool(e)} for a, b, c, d, e in rows],
             "by_story": [{"story_id": a, "usd": round(b or 0, 4)} for a, b in per_story],
             "compute": [{"job_type": a, "runs": b, "seconds": round(c or 0, 1)} for a, b, c in jobs_t]}
+
+
+# ------------------------------------------------------------------ Ban Tài chính + bộ não phòng ban
+
+
+@app.get("/api/budget")
+def budget_status(db: Session = Depends(get_db), actor: Actor = Depends(current_actor)):
+    from ..agents import budget
+    from ..models import BudgetLedger
+
+    st = budget.status(db)
+    st["recent"] = [{"at": r.at, "department": r.department, "provider": r.provider, "model": r.model, "status": r.status,
+                     "usd": round(r.usd, 5), "input_tokens": r.input_tokens, "output_tokens": r.output_tokens,
+                     "cache_read_tokens": r.cache_read_tokens, "story_id": r.story_id}
+                    for r in db.scalars(select(BudgetLedger).order_by(BudgetLedger.id.desc()).limit(30))]
+    return st
+
+
+@app.get("/api/agents")
+def agents_status(db: Session = Depends(get_db), actor: Actor = Depends(current_actor)):
+    from ..agents.brain import get_skill
+    from ..agents.departments import DEPARTMENTS, FINANCE, LEVELS, level_of, teacher_model
+    from ..agents.learning import memory_stats
+    from ..agents.memory import lessons, style_guide
+    from ..agents.teachers import LocalStudent
+
+    s = get_settings()
+    mem = memory_stats(db)
+    student = LocalStudent(s.local_llm_url, s.local_llm_model) if s.local_llm_url else None
+    student_ok = bool(student and student.available())
+    out = []
+    for code, d in DEPARTMENTS.items():
+        sk = get_skill(db, code)
+        recent = list(sk.recent or [])
+        lv = level_of(recent, sk.student_passes, sk.graduated)
+        out.append({
+            "code": code, "name": d.name, "role": d.role, "teacher_model": teacher_model(s, d), "learns": d.learns,
+            "mode": sk.mode, "level": lv, "level_name": LEVELS[lv], "graduated": sk.graduated,
+            "pass_rate": round(sum(recent) / len(recent), 3) if recent else None, "window": len(recent),
+            "teacher_calls": sk.teacher_calls, "student_attempts": sk.student_attempts, "student_passes": sk.student_passes,
+            "student_live": sk.student_live, "cache_hits": sk.cache_hits, "saved_usd": round(sk.saved_usd, 4),
+            "similarity_avg": sk.similarity_avg, "memories": mem.get(code, {}),
+            "lessons": lessons(db, code, 5), "style_guide": style_guide(db, code),
+            "last_reflect_at": sk.last_reflect_at,
+        })
+    db.commit()
+    return {"departments": out, "finance": FINANCE, "teacher_strategy": s.teacher_strategy,
+            "teachers": {"anthropic": bool(s.anthropic_api_key), "openai": bool(s.openai_api_key and s.openai_model)},
+            "student": {"configured": bool(s.local_llm_url), "available": student_ok, "model": s.local_llm_model,
+                        "url": s.local_llm_url},
+            "graduation": {"window": s.agent_graduation_window, "min": s.agent_graduation_min,
+                           "rate": s.agent_graduation_rate, "audit_rate": s.agent_audit_rate}}
+
+
+class AgentModeIn(BaseModel):
+    mode: Literal["auto", "teacher_only", "student_only"]
+
+
+@app.post("/api/agents/{code}/mode")
+def agent_mode(code: str, body: AgentModeIn, db: Session = Depends(get_db), actor: Actor = Depends(require_owner)):
+    from ..agents.brain import get_skill
+    from ..agents.departments import DEPARTMENTS
+
+    if code not in DEPARTMENTS:
+        raise HTTPException(404, "Không có phòng ban này")
+    get_skill(db, code).mode = body.mode
+    audit(db, actor.name, "agent.mode", "agent", code, mode=body.mode)
+    db.commit()
+    return {"code": code, "mode": body.mode}
+
+
+@app.post("/api/agents/{code}/reflect")
+def agent_reflect(code: str, db: Session = Depends(get_db), actor: Actor = Depends(require_owner)):
+    from ..agents import learning
+    from ..agents.departments import DEPARTMENTS
+    from ..agents.writer import build_brain
+
+    if code not in DEPARTMENTS or code == "hoc_tap":
+        raise HTTPException(404, "Không có phòng ban này")
+    res = learning.reflect(db, code, build_brain(), force=True)
+    audit(db, actor.name, "agent.reflect", "agent", code, ran=res.get("ran"))
+    db.commit()
+    return res
+
+
+@app.get("/api/agents/{code}/memories")
+def agent_memories(code: str, kind: str | None = None, limit: int = Query(30, le=200), db: Session = Depends(get_db),
+                   actor: Actor = Depends(current_actor)):
+    from ..models import AgentMemory
+
+    q = select(AgentMemory).where(AgentMemory.department == code)
+    if kind:
+        q = q.where(AgentMemory.kind == kind)
+    return [{"id": m.id, "at": m.created_at, "kind": m.kind, "source": m.source, "model": m.model, "quality": m.quality,
+             "approved": m.approved, "uses": m.uses, "story_id": m.story_id, "text": m.text[:600]}
+            for m in db.scalars(q.order_by(AgentMemory.id.desc()).limit(limit))]
 
 
 @app.get("/api/analytics")

@@ -14,14 +14,19 @@ def _forbid_demo_in_prod(settings: Settings, what: str, choice: str) -> None:
 
 
 def get_writer(settings: Settings | None = None, client: Any = None):
-    from .services.claude_writer import AnthropicWriter, DemoWriter
+    """Mọi bộ viết thật đều đi qua các phòng ban (AgentWriter) → luôn có trần ngân sách + bộ nhớ.
+    writer_provider=anthropic: chỉ dùng thầy Claude, không có trò chạy máy (vẫn bị Ban Tài chính kiểm soát)."""
+    from .agents.writer import AgentWriter
+    from .services.claude_writer import DemoWriter
 
     s = settings or get_settings()
     choice = s.writer_provider
     _forbid_demo_in_prod(s, "Claude writer", choice)
-    if choice == "demo" or (choice == "auto" and s.is_demo and not s.anthropic_api_key):
+    if choice == "demo" or (choice == "auto" and s.is_demo and not s.anthropic_api_key and not s.local_llm_url):
         return DemoWriter()
-    return AnthropicWriter(s, client=client)  # raise BlockedByCredentials nếu thiếu key
+    if choice == "anthropic":
+        s = s.model_copy(update={"local_llm_url": "", "teacher_strategy": "anthropic"})
+    return AgentWriter(s, anthropic_client=client)  # raise BlockedByCredentials nếu không có thầy lẫn trò
 
 
 def get_tts(settings: Settings | None = None):

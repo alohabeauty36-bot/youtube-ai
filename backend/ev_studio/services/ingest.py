@@ -83,7 +83,24 @@ def ingest_articles(session: Session, articles: list[RawArticle], writer=None, a
         # 3. claim: fixture có sẵn; production → Claude trích xuất (trích dẫn phải khớp văn bản)
         raw_claims = a.claims
         if raw_claims is None and writer is not None:
-            raw_claims, _usage = writer.extract_claims(a.title, a.raw_excerpt)
+            _p, hits0 = ranker.classify_pillar(a.title, a.raw_excerpt)
+            ev_terms = ("xe dien", "vinfast", "o to dien", "xe may dien", "tram sac", "pin", "sac ")
+            relevant = sum(hits0.values()) > 0 or any(t in ranker.strip_accents(a.title + " " + a.raw_excerpt) for t in ev_terms)
+            if not getattr(writer, "is_demo", False) and not relevant:
+                raw_claims = []  # không thuộc trụ cột P1/P2/P3 → không tốn tiền tách claim
+                stats["skipped_offtopic"] = stats.get("skipped_offtopic", 0) + 1
+            else:
+                from ..agents.budget import BudgetExceeded
+                from ..workers.jobs import record_cost
+
+                session.commit()  # SQLite: nhả khoá ghi để Ban Tài chính ghi sổ cái trong lúc chờ AI
+                try:
+                    raw_claims, usage = writer.extract_claims(a.title, a.raw_excerpt)
+                except BudgetExceeded as e:
+                    stats["budget_skipped"] = stats.get("budget_skipped", 0) + 1  # để lần quét sau làm tiếp
+                    stats["budget_reason"] = e.reasons[0]
+                    continue
+                record_cost(session, None, "ClaimExtraction", usage, getattr(writer, "is_demo", False))
             for c in raw_claims:
                 c.setdefault("source_ids", ["s1"])
         raw_claims = raw_claims or []
@@ -127,6 +144,10 @@ def ingest_articles(session: Session, articles: list[RawArticle], writer=None, a
             ))
         session.add(item)
         created.append(item)
+        if not a.is_demo:
+            from ..agents.learning import remember_claims
+
+            remember_claims(session, a.title, checked)  # kiến thức đã xác minh → các phòng tra cứu về sau
         stats["created"] += 1
         stats[status] = stats.get(status, 0) + 1
     session.flush()

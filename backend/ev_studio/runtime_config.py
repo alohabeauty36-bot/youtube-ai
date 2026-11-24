@@ -31,6 +31,8 @@ class ConfigField:
 
 GROUPS = {
     "mode": "Chế độ chạy",
+    "budget": "Ngân sách AI (Ban Tài chính)",
+    "agents": "Bộ não phòng ban (học từ Claude/ChatGPT)",
     "anthropic": "Claude (Anthropic API)",
     "tts": "Giọng đọc VieNeu-TTS",
     "youtube": "YouTube (OAuth)",
@@ -52,8 +54,34 @@ FIELDS: list[ConfigField] = [
     ConfigField("anthropic_model", "Model", "anthropic", "text", help="Bấm 'Kiểm tra' để xem danh sách model tài khoản được dùng.",
                 placeholder="claude-sonnet-5-5"),
     ConfigField("anthropic_max_tokens", "Max tokens mỗi lần viết", "anthropic", "int"),
-    ConfigField("writer_provider", "Bộ viết", "anthropic", "select", ("auto", "demo", "anthropic"),
-                "auto: demo khi ở chế độ demo và chưa có key; ngược lại dùng Anthropic."),
+    ConfigField("writer_provider", "Bộ viết", "anthropic", "select", ("auto", "demo", "agents", "anthropic"),
+                "auto/agents: các phòng ban (bộ nhớ + thầy + trò). anthropic: chỉ dùng thầy Claude. "
+                "Mọi lựa chọn thật đều bị Ban Tài chính giới hạn chi tiêu."),
+    ConfigField("budget_monthly_usd", "Trần chi tiêu AI mỗi tháng (USD)", "budget", "float",
+                help="Trần CỨNG cho Claude + ChatGPT. Chạm trần: video dừng ở NEEDS_REVIEW (BLOCKED_BY_BUDGET), không tiêu thêm."),
+    ConfigField("budget_safety_margin", "Phần trăm giữ lại phòng sai số (0.05 = 5%)", "budget", "float"),
+    ConfigField("budget_story_max_usd", "Trần chi cho một video (USD)", "budget", "float",
+                help="Gồm ResearchPack, kịch bản và các lần viết lại cho đúng thời lượng."),
+    ConfigField("stories_per_day", "Số tin tối đa mỗi ngày (Autopilot)", "budget", "int"),
+    ConfigField("stories_per_day_min", "Số tin tối thiểu mong muốn mỗi ngày", "budget", "int"),
+    ConfigField("model_prices_json", "Bảng giá bổ sung (JSON)", "budget", "text",
+                help='Bắt buộc cho model ChatGPT. Ví dụ {"ten-model": [gia_vao, gia_ra]} USD/1 triệu token.'),
+    ConfigField("agents_enabled", "Bật bộ não phòng ban", "agents", "bool"),
+    ConfigField("teacher_strategy", "Thầy chính", "agents", "select", ("anthropic", "openai", "alternate"),
+                "alternate: luân phiên Claude và ChatGPT để các phòng học văn phong của cả hai (cùng chi phí)."),
+    ConfigField("model_claims", "Model Claude — Phòng Săn tin", "agents", "text", placeholder="claude-haiku-5-5"),
+    ConfigField("model_research", "Model Claude — Phòng Nghiên cứu", "agents", "text", placeholder="claude-sonnet-5-5"),
+    ConfigField("model_script", "Model Claude — Phòng Biên kịch (trống = model mặc định)", "agents", "text"),
+    ConfigField("model_editor", "Model Claude — Phòng Biên tập & Ban Đào tạo", "agents", "text", placeholder="claude-haiku-5-5"),
+    ConfigField("openai_api_key", "OpenAI API key (ChatGPT, tuỳ chọn)", "agents", "secret", placeholder="sk-…"),
+    ConfigField("openai_model", "Model ChatGPT", "agents", "text", help="Nhớ khai giá model này trong Bảng giá bổ sung."),
+    ConfigField("local_llm_url", "Địa chỉ Ollama (trò chạy trên máy)", "agents", "text", placeholder="http://localhost:11434",
+                help="Cài Ollama, chạy `ollama pull qwen2.5:7b-instruct`. Để trống = chưa có trò, mọi việc do thầy làm."),
+    ConfigField("local_llm_model", "Model trò", "agents", "text", placeholder="qwen2.5:7b-instruct"),
+    ConfigField("agent_shadow_learning", "Trò làm thử mỗi đề của thầy để học (miễn phí)", "agents", "bool"),
+    ConfigField("agent_graduation_min", "Số lần thử tối thiểu trước khi tốt nghiệp", "agents", "int"),
+    ConfigField("agent_graduation_rate", "Tỷ lệ đạt để tốt nghiệp (0.8 = 80%)", "agents", "float"),
+    ConfigField("agent_audit_rate", "Tỷ lệ việc vẫn gửi thầy sau khi tốt nghiệp", "agents", "float"),
     ConfigField("tts_provider", "Cách chạy VieNeu", "tts", "select", ("auto", "demo", "vieneu_local", "vieneu_http"),
                 "vieneu_local: thư viện `vieneu` cài cùng máy (CPU/ONNX). vieneu_http: server VieNeu riêng (máy GPU)."),
     ConfigField("vieneu_http_url", "Địa chỉ server VieNeu", "tts", "text", placeholder="http://192.168.1.20:8001"),
@@ -184,6 +212,16 @@ def save(session, values: dict[str, Any], clear: list[str], actor: str) -> SaveR
     Settings.model_validate(merged)
     if merged.get("duration_min_seconds", 0) >= merged.get("duration_max_seconds", 1):
         raise ValueError("Thời lượng tối thiểu phải nhỏ hơn tối đa")
+    if not 0 < float(merged.get("budget_monthly_usd", 50)) <= 10000:
+        raise ValueError("Trần chi tiêu tháng phải trong khoảng 0–10.000 USD")
+    if not 0 <= float(merged.get("budget_safety_margin", 0.05)) < 0.5:
+        raise ValueError("Phần trăm giữ lại phải trong khoảng 0–0.5")
+    if int(merged.get("stories_per_day_min", 2)) > int(merged.get("stories_per_day", 3)):
+        raise ValueError("Số tin tối thiểu/ngày không được lớn hơn tối đa")
+    if merged.get("model_prices_json"):
+        from .agents.pricing import price_table
+
+        price_table(merged["model_prices_json"])  # JSON sai → GateBlocked
     for name, v in staged.items():
         fld = BY_KEY[name]
         stored = {"enc": f.encrypt(str(v).encode()).decode()} if fld.kind in SECRET_KINDS else {"v": v}

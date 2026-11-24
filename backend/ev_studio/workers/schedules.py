@@ -44,6 +44,22 @@ def refresh_statuses() -> int:
     return n
 
 
+def weekly_reflect() -> list:
+    """Ban Đào tạo đúc kết bài học thành sổ tay văn phong (model rẻ, có trần ngân sách riêng 3%)."""
+    from ..agents.learning import reflect_all
+    from ..agents.writer import build_brain
+    from ..errors import BlockedByCredentials
+
+    s = get_settings()
+    if s.is_demo or not s.agents_enabled:
+        return []
+    try:
+        brain = build_brain()
+    except BlockedByCredentials:
+        return []
+    return reflect_all(brain)
+
+
 def start_scheduler() -> None:
     global _scheduler
     if _scheduler is not None:
@@ -54,6 +70,7 @@ def start_scheduler() -> None:
     _scheduler = BackgroundScheduler(timezone=s.timezone)
     _scheduler.add_job(scan_and_autopilot, "interval", hours=s.scan_interval_hours, id="scan", max_instances=1, coalesce=True)
     _scheduler.add_job(refresh_statuses, "interval", hours=6, id="refresh", max_instances=1, coalesce=True)
+    _scheduler.add_job(weekly_reflect, "cron", day_of_week="sun", hour=3, minute=17, id="reflect", max_instances=1, coalesce=True)
     _scheduler.start()
     log.info("Scheduler đã chạy (quét mỗi %.1fh nếu bật trong Settings)", s.scan_interval_hours)
 

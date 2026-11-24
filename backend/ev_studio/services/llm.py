@@ -33,7 +33,7 @@ def parse_json_loose(text: str) -> dict:
 
 
 class AnthropicJSONClient:
-    def __init__(self, api_key: str, model: str, max_tokens: int = 16000, client: Any = None):
+    def __init__(self, api_key: str, model: str, max_tokens: int = 16000, client: Any = None, cache_system: bool = False):
         if not api_key:
             raise BlockedByCredentials("Thiếu ANTHROPIC_API_KEY")
         import anthropic
@@ -42,12 +42,14 @@ class AnthropicJSONClient:
         self.client = client or anthropic.Anthropic(api_key=api_key, max_retries=2, timeout=600)
         self.model = model
         self.max_tokens = max_tokens
+        self.cache_system = cache_system  # prompt caching: system prompt dài, lặp lại → đọc cache chỉ tốn 5–10% giá
 
     def complete_json(self, system: str, user: str, max_tokens: int | None = None) -> tuple[dict, dict]:
         a = self._anthropic
         try:
             resp = self.client.messages.create(
-                model=self.model, max_tokens=max_tokens or self.max_tokens, system=system,
+                model=self.model, max_tokens=max_tokens or self.max_tokens,
+                system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}] if self.cache_system else system,
                 messages=[{"role": "user", "content": user}],
             )
         except a.AuthenticationError as e:
@@ -65,9 +67,14 @@ class AnthropicJSONClient:
         if getattr(resp, "stop_reason", None) == "max_tokens":
             raise RetryableError("Claude bị cắt do max_tokens; tăng ANTHROPIC_MAX_TOKENS")
         text = "".join(getattr(b, "text", "") for b in resp.content if getattr(b, "type", "") == "text")
-        usage = {"input_tokens": resp.usage.input_tokens, "output_tokens": resp.usage.output_tokens, "model": self.model}
+        u = resp.usage
+        usage = {"input_tokens": u.input_tokens, "output_tokens": u.output_tokens, "model": self.model, "provider": "anthropic",
+                 "cache_write_tokens": int(getattr(u, "cache_creation_input_tokens", 0) or 0),
+                 "cache_read_tokens": int(getattr(u, "cache_read_input_tokens", 0) or 0)}
         return parse_json_loose(text), usage
 
 
 def estimate_usd(usage: dict) -> float:
+    if "usd" in usage:  # đã được Ban Tài chính tính theo bảng giá của đúng model
+        return round(float(usage["usd"]), 6)
     return round(usage.get("input_tokens", 0) / 1e6 * DEFAULT_PRICE_IN + usage.get("output_tokens", 0) / 1e6 * DEFAULT_PRICE_OUT, 5)
