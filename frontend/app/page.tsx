@@ -37,6 +37,10 @@ export default function Dashboard() {
         <Card title="Chi phí API ước tính"><div className="kpi">${data?.cost_usd ?? 0}</div><Link href="/analytics">Chi tiết →</Link></Card>
       </div>
       {msg && <pre className="small">{msg}</pre>}
+      {data?.open_errors?.total > 0 && <div className={(data.open_errors.ERROR || 0) + (data.open_errors.CRITICAL || 0) > 0 ? "error row" : "hint row"}>
+        <span>🐞 Tool đang có <b>{data.open_errors.total}</b> lỗi/cảnh báo chưa xử lý
+          {(data.open_errors.ERROR || 0) + (data.open_errors.CRITICAL || 0) > 0 && <> (trong đó <b>{(data.open_errors.ERROR || 0) + (data.open_errors.CRITICAL || 0)}</b> lỗi)</>}.</span>
+        <Link className="right" href="/errors">Xem Nhật ký lỗi →</Link></div>}
       {data?.alerts?.length > 0 && <Card title="⚠️ Cần chú ý">
         {data.alerts.map((a: any) => <div key={a.story_id} className="news-card"><Link href={`/story/?id=${a.story_id}`}><b>{a.topic}</b></Link> — {STATE_LABEL[a.state] || a.state}
           <ul>{a.blockers.map((b: string, i: number) => <li key={i} className="small">{b}</li>)}</ul></div>)}

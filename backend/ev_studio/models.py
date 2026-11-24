@@ -384,6 +384,30 @@ class AuditLog(Base):
     details: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
+class ErrorLog(Base):
+    """Nhật ký lỗi của tool. Lỗi giống hệt nhau (cùng fingerprint, chưa xử lý) được gộp: tăng `count`, cập nhật `last_seen_at`."""
+    __tablename__ = "error_logs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    fingerprint: Mapped[str] = mapped_column(String(40), index=True)
+    level: Mapped[str] = mapped_column(String(10), index=True)  # WARNING | ERROR | CRITICAL
+    source: Mapped[str] = mapped_column(String(30), index=True)  # pipeline|job|ingest|tts|media|render|youtube|telegram|scheduler|api|config|system
+    logger: Mapped[str] = mapped_column(String(120), default="")
+    message: Mapped[str] = mapped_column(Text)
+    exc_type: Mapped[str | None] = mapped_column(String(120))
+    traceback: Mapped[str | None] = mapped_column(Text)
+    story_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    job_id: Mapped[str | None] = mapped_column(String(36))
+    job_type: Mapped[str | None] = mapped_column(String(40))
+    details: Mapped[dict] = mapped_column(JSON, default=dict)
+    count: Mapped[int] = mapped_column(Integer, default=1)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+    resolved: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolved_by: Mapped[str | None] = mapped_column(String(100))
+    resolution_note: Mapped[str | None] = mapped_column(Text)
+
+
 class CostUsage(Base):
     __tablename__ = "cost_usage"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

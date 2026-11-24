@@ -135,6 +135,13 @@ def test_wrong_channel_is_blocked(ready_story):
     res = run_pipeline(ready_story, Providers(youtube=yt))
     assert res["state"] == "FAILED_PERMANENT" and "kênh" in res["error"]
     assert yt.insert_calls == 0 and not demo_videos()
+    from ev_studio.error_log import flush_pending
+    from ev_studio.models import ErrorLog
+
+    flush_pending()
+    with SessionLocal() as s:  # lỗi hiện ở màn hình Nhật ký lỗi, gắn đúng story + job, chỉ ghi một lần
+        rows = list(s.scalars(select(ErrorLog).where(ErrorLog.story_id == ready_story, ErrorLog.exc_type == "ChannelMismatch")))
+        assert len(rows) == 1 and rows[0].level == "ERROR" and rows[0].job_type == "UploadPrivateJob" and rows[0].traceback
 
 
 def test_privacy_readback_mismatch_forces_private(ready_story):

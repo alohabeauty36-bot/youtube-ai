@@ -38,5 +38,7 @@ export function fmtTime(s?: number | null) {
 }
 export function fmtDate(s?: string | null) {
   if (!s) return "—";
-  try { return new Date(s).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" }); } catch { return s; }
+  // DB lưu giờ UTC; SQLite trả về chuỗi không kèm múi giờ → coi là UTC (nếu không trình duyệt hiểu nhầm là giờ máy, lệch 7 tiếng)
+  const iso = /[zZ]|[+-]\d\d:?\d\d$/.test(s) || !s.includes("T") ? s : `${s}Z`;
+  try { return new Date(iso).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" }); } catch { return s; }
 }

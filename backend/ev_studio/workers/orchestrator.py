@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
+from ..error_log import error_context, mark_logged
 from ..errors import BlockedByCredentials, GateBlocked, PermanentError, RetryableError
 from ..models import Job, Story, now
 from ..security import audit, redact
@@ -81,13 +82,16 @@ def run_job(session: Session, story: Story | None, job_type: str, ihash: str, fn
             job = session.query(Job).filter_by(idempotency_key=key).one()
             if job.status == "succeeded":
                 return job.output
+    sid = story.id if story else None
     while True:
         job.attempts += 1
         job.status, job.started_at = "running", now()
         session.commit()
         t0 = time.time()
+        ctx = {"evcs_story_id": sid, "evcs_job_id": job.id, "evcs_job_type": job_type, "evcs_source": "job"}
         try:
-            out = fn() or {}
+            with error_context(story_id=sid, job_id=job.id, job_type=job_type):
+                out = fn() or {}
             job.status, job.output, job.error = "succeeded", out, None
             job.finished_at, job.duration_seconds = now(), round(time.time() - t0, 3)
             job.history = job.history + [{"attempt": job.attempts, "status": "succeeded", "at": now().isoformat()}]
@@ -102,11 +106,14 @@ def run_job(session: Session, story: Story | None, job_type: str, ihash: str, fn
             if job.attempts >= job.max_attempts:
                 job.status, job.finished_at = "failed_retryable", now()
                 session.commit()
+                log.error("%s thất bại sau %d lần thử: %s", job_type, job.attempts, msg, exc_info=e,
+                          extra=ctx | {"evcs_details": {"attempts": job.attempts}})
+                mark_logged(e)
                 raise
             job.status = "queued"
             session.commit()
             delay = s.job_backoff_base_seconds * (2 ** (job.attempts - 1))
-            log.warning("%s lỗi tạm (%s), thử lại sau %.1fs", job_type, msg, delay)
+            log.warning("%s lỗi tạm (%s), thử lại sau %.1fs", job_type, msg, delay, extra=ctx)
             time.sleep(min(delay, 300))
         except (GateBlocked, BlockedByCredentials) as e:
             session.rollback()
@@ -114,6 +121,9 @@ def run_job(session: Session, story: Story | None, job_type: str, ihash: str, fn
             job.status, job.error, job.finished_at = "blocked", redact(e), now()
             job.history = job.history + [{"attempt": job.attempts, "status": "blocked", "error": redact(e), "at": now().isoformat()}]
             session.commit()
+            if not getattr(e, "auto_handled", False):  # vd: sai thời lượng → pipeline tự viết lại, không phải lỗi
+                log.warning("%s bị chặn: %s", job_type, redact(e), exc_info=e, extra=ctx)
+                mark_logged(e)
             raise
         except Exception as e:
             session.rollback()
@@ -122,6 +132,8 @@ def run_job(session: Session, story: Story | None, job_type: str, ihash: str, fn
             job.history = job.history + [{"attempt": job.attempts, "status": "failed_permanent", "error": job.error,
                                           "trace": redact(traceback.format_exc()[-1500:]), "at": now().isoformat()}]
             session.commit()
+            log.error("%s lỗi: %s", job_type, job.error, exc_info=e, extra=ctx)
+            mark_logged(e)
             raise
 
 

@@ -130,7 +130,7 @@ def migrate() -> None:
     insp = inspect(get_engine())
     tables = set(insp.get_table_names())
     if "stories" in tables and "alembic_version" not in tables:
-        command.stamp(cfg, "head")
+        command.stamp(cfg, "0001")  # các migration sau 0001 tự bỏ qua bảng đã có
     command.upgrade(cfg, "head")
 
 
