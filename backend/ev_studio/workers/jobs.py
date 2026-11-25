@@ -175,6 +175,17 @@ def research_job(session: Session, story: Story, p: Providers) -> dict:
 
 # ------------------------------------------------------------------ 4. script
 
+def _special_requests(session: Session, story: Story) -> str:
+    """Ghi chú biên tập của chủ kênh + định hướng nội dung của Ban Tăng trưởng (định hướng, không phải dữ kiện)."""
+    from ..agents.growth import content_guidance
+
+    parts = [story.editorial_notes or ""]
+    g = content_guidance(session)
+    if g:
+        parts.append(f"Định hướng kênh từ Ban Tăng trưởng (chỉ là định hướng biên tập, không phải dữ kiện): {g}")
+    return "\n".join(p for p in parts if p).strip()
+
+
 def script_job(session: Session, story: Story, p: Providers, actual_audio_seconds: float | None = None) -> dict:
     s = get_settings()
     rp = latest_pack(session, story)
@@ -185,7 +196,7 @@ def script_job(session: Session, story: Story, p: Providers, actual_audio_second
         select(Story.topic).where(Story.id != story.id).order_by(Story.created_at.desc()).limit(10))]
     ctx = {"pillar": story.pillar, "research_pack": rp.content, "claims_to_avoid": rp.content.get("claims_to_avoid", []),
            "recent_topics": recent_topics, "core_question": story.core_question or story.topic,
-           "special_requests": story.editorial_notes, "target_duration_seconds": s.duration_target_seconds,
+           "special_requests": _special_requests(session, story), "target_duration_seconds": s.duration_target_seconds,
            "min_duration_seconds": s.duration_min_seconds, "max_duration_seconds": s.duration_max_seconds,
            "actual_audio_seconds": actual_audio_seconds,
            "previous_spoken_script": prev.spoken_script if (prev and actual_audio_seconds) else None, "story_id": story.id}
@@ -904,9 +915,13 @@ def autopilot_tick(session: Session, providers: Providers | None = None) -> dict
     ok, why = budget.can_start_story(session)  # Ban Tài chính: tối đa N tin/ngày và phải còn đủ tiền cho một video
     if not ok:
         return {"ran": False, "reason": why}
+    from ..agents.growth import autopilot_priority, pillar_weights
+
     used = {x for (x,) in session.execute(select(Story.news_item_id))}
-    cands = session.scalars(select(NewsItem).where(NewsItem.status == "shortlist", NewsItem.score >= s.score_autopilot)
-                            .order_by(NewsItem.score.desc()))
+    cands = list(session.scalars(select(NewsItem).where(NewsItem.status == "shortlist", NewsItem.score >= s.score_autopilot)
+                                 .order_by(NewsItem.score.desc())))
+    w = pillar_weights(session)  # Ban Tăng trưởng: ưu tiên trụ cột đang mang lại doanh thu/lượt xem (không hạ ngưỡng điểm)
+    cands.sort(key=lambda n: -autopilot_priority(n.score, n.pillar, w))
     for n in cands:
         if n.id in used:
             continue

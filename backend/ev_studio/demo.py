@@ -131,11 +131,21 @@ def demo_data_summary(session: Session) -> dict:
         "stories": len(story_ids), "news": len(news_ids), "sources": len(source_ids), "channels": len(channel_ids),
         "essays": len(list(session.scalars(select(Essay.id).where(Essay.is_demo.is_(True))))),
         "cost_rows": len(list(session.scalars(select(CostUsage.id).where(CostUsage.is_demo.is_(True))))),
+        "growth_rows": _count_growth_demo(session),
         "running_stories": running,
         "has_files": any(p.exists() for p in _demo_dirs()),
     }
     out["total"] = sum(v for k, v in out.items() if k not in ("running_stories", "has_files")) + int(out["has_files"])
     return out
+
+
+def _count_growth_demo(session: Session) -> int:
+    from sqlalchemy import func
+
+    from .models import ChannelMetricDay, GrowthPlan, VideoMetric
+
+    return sum(int(session.scalar(select(func.count()).select_from(m).where(m.is_demo.is_(True))) or 0)
+               for m in (ChannelMetricDay, VideoMetric, GrowthPlan))
 
 
 def _demo_dirs() -> list[Path]:
@@ -231,6 +241,18 @@ def purge_demo_data(session: Session, actor: str, *, force: bool = False) -> dic
     # câu trả lời AI cho tin fixture (vd. tách claim bằng Claude thật khi đang DEMO): đề bài mang nhãn [DEMO]
     rm(AgentMemory, AgentMemory.kind == "answer", or_(AgentMemory.request.like("%[DEMO]%"), AgentMemory.source == "demo"))
     rm(CostUsage, CostUsage.is_demo.is_(True))
+    # Ban Tăng trưởng: số liệu Analytics giả lập + kế hoạch dựng trên số liệu đó (kèm kế hoạch đang áp dụng)
+    from .agents.growth import S_GUIDANCE, S_TARGET, S_WEIGHTS
+    from .models import ChannelMetricDay, GrowthPlan, VideoMetric
+
+    had_demo_plan = session.scalar(select(GrowthPlan.id).where(GrowthPlan.is_demo.is_(True)).limit(1)) is not None
+    rm(ChannelMetricDay, ChannelMetricDay.is_demo.is_(True))
+    rm(VideoMetric, VideoMetric.is_demo.is_(True))
+    rm(GrowthPlan, GrowthPlan.is_demo.is_(True))
+    if had_demo_plan:
+        from .models import AppSetting as _AS
+
+        rm(_AS, _AS.key.in_([S_TARGET, S_WEIGHTS, S_GUIDANCE]), key="growth_settings")
     # Autopilot thường được bật trong lúc chạy thử DEMO → tắt để chủ kênh tự bật lại có chủ đích ở chế độ thật
     from .models import AppSetting
 

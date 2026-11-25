@@ -29,6 +29,9 @@ DEPARTMENTS: dict[str, Department] = {
     "bai_luan": Department("bai_luan", "Phòng Bài luận",
                            "Tự research web (miễn phí) rồi viết bài luận theo chủ đề, có trích nguồn; học cách viết của cả Claude lẫn ChatGPT",
                            "model_essay", 9000, 0.30, strategy_setting="essay_teacher_strategy"),
+    "tang_truong": Department("tang_truong", "Ban Tăng trưởng",
+                              "Theo dõi kênh bằng YouTube Analytics, đối chiếu KPI doanh thu tháng, tự chỉnh kế hoạch sản xuất "
+                              "và viết bản ghi nhớ chiến lược hằng tuần", "model_growth", 3000, 0.0, learns=False),
     "hoc_tap": Department("hoc_tap", "Ban Đào tạo", "Định kỳ đúc kết bài học của các phòng thành sổ tay văn phong",
                           "model_editor", 3000, 0.0, learns=False),
 }

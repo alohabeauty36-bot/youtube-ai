@@ -65,6 +65,20 @@ def weekly_reflect() -> list:
     return reflect_all(brain)
 
 
+def growth_daily() -> dict:
+    """Ban Tăng trưởng: đồng bộ YouTube Analytics, đối chiếu KPI, chỉnh kế hoạch. Bản ghi nhớ AI tối đa 1 lần/tuần."""
+    from ..agents.growth import growth_tick
+
+    with SessionLocal() as db:
+        try:
+            res = growth_tick(db, actor="scheduler")
+        except Exception:
+            db.rollback()
+            log.exception("Ban Tăng trưởng lỗi", extra={"evcs_source": "scheduler"})
+            return {"ran": False}
+        return {"ran": True, "plan_id": res["id"]}
+
+
 def start_scheduler() -> None:
     global _scheduler
     if _scheduler is not None:
@@ -75,6 +89,7 @@ def start_scheduler() -> None:
     _scheduler = BackgroundScheduler(timezone=s.timezone)
     _scheduler.add_job(scan_and_autopilot, "interval", hours=s.scan_interval_hours, id="scan", max_instances=1, coalesce=True)
     _scheduler.add_job(refresh_statuses, "interval", hours=6, id="refresh", max_instances=1, coalesce=True)
+    _scheduler.add_job(growth_daily, "cron", hour=6, minute=23, id="growth", max_instances=1, coalesce=True)
     _scheduler.add_job(weekly_reflect, "cron", day_of_week="sun", hour=3, minute=17, id="reflect", max_instances=1, coalesce=True)
     _scheduler.start()
     log.info("Scheduler đã chạy (quét mỗi %.1fh nếu bật trong Settings)", s.scan_interval_hours)

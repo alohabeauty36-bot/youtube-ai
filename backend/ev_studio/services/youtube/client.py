@@ -15,9 +15,13 @@ from ...security import redact
 from .privacy import PRIVATE, assert_private_body
 
 log = logging.getLogger(__name__)
+ANALYTICS_SCOPE = "https://www.googleapis.com/auth/yt-analytics.readonly"
+MONETARY_SCOPE = "https://www.googleapis.com/auth/yt-analytics-monetary.readonly"  # doanh thu (kênh đã bật kiếm tiền)
 SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube.readonly",
+    ANALYTICS_SCOPE,  # Ban Tăng trưởng: chỉ ĐỌC số liệu, không sửa gì trên kênh
+    MONETARY_SCOPE,
 ]
 RETRIABLE_STATUS = {500, 502, 503, 504}
 
