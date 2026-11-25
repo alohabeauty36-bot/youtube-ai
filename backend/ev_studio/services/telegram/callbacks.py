@@ -64,6 +64,53 @@ def handle_callback(session: Session, callback: dict, tg=None) -> dict:
     return answer("✏️ Đã tạo phiên bản sửa mới; bản private cũ giữ nguyên.") | res
 
 
+POLL_WARN_AFTER = 300  # giây mất kết nối liên tục trước khi ghi cảnh báo vào Nhật ký lỗi
+
+
+def poll_once(tg, offset, db_factory) -> int | None:
+    for u in tg.get_updates(offset):
+        offset = u["update_id"] + 1
+        if "callback_query" in u:
+            with db_factory() as db:
+                handle_callback(db, u["callback_query"], tg)
+    return offset
+
+
+class PollHealth:
+    """Theo dõi lỗi polling. Mạng chập chờn vài lần (tự hết) chỉ ghi INFO; mất kết nối liên tục ≥ 5 phút hoặc lỗi cấu hình
+    (sai token, 409 Conflict…) mới ghi WARNING kèm nội dung lỗi để chủ kênh biết phải làm gì."""
+
+    def __init__(self, clock=time.monotonic):
+        self.clock, self.fail_since, self.fails, self.warned = clock, None, 0, False
+
+    def ok(self) -> None:
+        if self.warned:
+            log.info("Telegram polling đã kết nối lại sau %s lần lỗi", self.fails)
+        self.fail_since, self.fails, self.warned = None, 0, False
+
+    def failed(self, e: Exception) -> float:
+        """Ghi log phù hợp, trả về số giây nên chờ trước lần thử tiếp."""
+        from ...errors import RetryableError
+
+        self.fails += 1
+        now_ = self.clock()
+        self.fail_since = self.fail_since or now_
+        msg = str(e) or type(e).__name__
+        if not isinstance(e, RetryableError):
+            if not self.warned or self.fails % 30 == 1:
+                log.warning("Telegram polling lỗi: %s", msg, extra={"evcs_source": "telegram"})
+                self.warned = True
+            return 60.0
+        if not self.warned and now_ - self.fail_since >= POLL_WARN_AFTER:
+            log.warning("Telegram polling mất kết nối liên tục %d phút (%s lần): %s. Kiểm tra Internet của máy chạy app; "
+                        "nút duyệt trên Telegram sẽ hoạt động lại khi có mạng.", (now_ - self.fail_since) // 60, self.fails, msg,
+                        extra={"evcs_source": "telegram"})
+            self.warned = True
+        else:
+            log.info("Telegram polling tạm lỗi (sẽ thử lại): %s", msg)
+        return min(60.0, 5.0 * 2 ** min(self.fails - 1, 4))
+
+
 def start_polling() -> None:
     """Chạy local không có webhook: long-poll getUpdates trong thread nền."""
     from ...db import SessionLocal
@@ -73,20 +120,16 @@ def start_polling() -> None:
         from ...config import get_settings
 
         offset = None
+        health = PollHealth()
         while True:
             s = get_settings()  # cấu hình có thể đổi trong trang Cấu hình → kiểm tra lại mỗi vòng
             if s.is_demo or not s.telegram_bot_token or s.telegram_webhook_secret:
                 time.sleep(15)
                 continue
             try:
-                tg = get_telegram()
-                for u in tg.get_updates(offset):
-                    offset = u["update_id"] + 1
-                    if "callback_query" in u:
-                        with SessionLocal() as db:
-                            handle_callback(db, u["callback_query"], tg)
-            except Exception as e:
-                log.warning("Telegram polling lỗi: %s", type(e).__name__)
-                time.sleep(10)
+                offset = poll_once(get_telegram(), offset, SessionLocal)
+                health.ok()
+            except Exception as e:  # noqa: BLE001 — thread nền không được chết
+                time.sleep(health.failed(e))
 
     threading.Thread(target=loop, daemon=True, name="telegram-poll").start()
