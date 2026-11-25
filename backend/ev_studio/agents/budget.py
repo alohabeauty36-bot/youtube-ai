@@ -27,10 +27,11 @@ from . import pricing
 DEPARTMENT_SHARES: dict[str, float] = {
     "san_tin": 0.14,
     "nghien_cuu": 0.22,
-    "bien_kich": 0.45,
+    "bien_kich": 0.43,
     "bien_tap": 0.06,
     "bai_luan": 0.10,  # bài luận theo chủ đề: ~4,75 USD/tháng ≈ 50–70 bài do thầy viết; Bậc thầy thì $0
     "hoc_tap": 0.03,
+    "tang_truong": 0.02,  # bản ghi nhớ chiến lược hằng tuần bằng Haiku: vài cent/tuần
 }
 DEFAULT_STORY_COST = 0.35  # ước tính ban đầu khi chưa có dữ liệu thật
 STALE_RESERVATION = timedelta(hours=2)
@@ -178,10 +179,12 @@ def avg_story_cost(db) -> float:
 
 def can_start_story(db) -> tuple[bool, str]:
     """Autopilot hỏi trước khi mở tin mới: còn suất trong ngày không, còn đủ tiền cho một video không."""
-    s = get_settings()
+    from .growth import effective_stories_per_day
+
     n = story_count_today(db)
-    if n >= s.stories_per_day:
-        return False, f"Hôm nay đã làm {n}/{s.stories_per_day} tin"
+    cap_today = effective_stories_per_day(db)  # kế hoạch Ban Tăng trưởng (nếu tự áp dụng), không thì cấu hình chủ kênh
+    if n >= cap_today:
+        return False, f"Hôm nay đã làm {n}/{cap_today} tin"
     w = window()
     left_today = day_allowance(db, w) - _spent(db, w.day_start)
     need = avg_story_cost(db)
@@ -191,6 +194,12 @@ def can_start_story(db) -> tuple[bool, str]:
     if left_today < need:
         return False, f"Ngân sách hôm nay còn ${left_today:.2f}, không đủ cho một video (~${need:.2f})"
     return True, "ok"
+
+
+def _eff_per_day(db) -> int:
+    from .growth import effective_stories_per_day
+
+    return effective_stories_per_day(db)
 
 
 def status(db) -> dict:
@@ -217,7 +226,7 @@ def status(db) -> dict:
         "spent_today_usd": round(today, 4), "allowance_today_usd": round(allow, 4),
         "days_left": w.days_left, "days_in_month": w.days_in_month,
         "forecast_month_usd": round(forecast, 2), "story_max_usd": s.budget_story_max_usd,
-        "avg_story_usd": avg, "stories_today": story_count_today(db), "stories_per_day": s.stories_per_day,
+        "avg_story_usd": avg, "stories_today": story_count_today(db), "stories_per_day": _eff_per_day(db),
         "stories_per_day_min": s.stories_per_day_min,
         "capacity_month_stories": int(max(0.0, cap - month) / avg) if avg else None,
         "can_start_story": ok, "reason": why, "stale_reservations": int(stale), "by_department": per_dept,

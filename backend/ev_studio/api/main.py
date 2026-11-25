@@ -1099,10 +1099,55 @@ def analytics(db: Session = Depends(get_db), actor: Actor = Depends(current_acto
     ups = list(db.scalars(select(YouTubeUpload).where(YouTubeUpload.youtube_video_id.is_not(None))))
     published = [u for u in ups if u.privacy_status_observed == "public"]
     note = ("DEMO: không có YouTube Analytics thật." if s.is_demo else
-            "Cần cấp thêm scope yt-analytics.readonly để đọc CTR/retention — BLOCKED_BY_CREDENTIALS nếu chưa cấp.")
+            "Số liệu kênh và KPI doanh thu xem ở trang Tăng trưởng & KPI (Ban Tăng trưởng).")
     return {"read_only": True, "note": note, "uploaded_private": len(ups), "observed_public_by_owner": len(published),
             "pillar_mix": [{"pillar": p, "count": c} for p, c in db.execute(select(Story.pillar, func.count(Story.id)).group_by(Story.pillar))],
             "metrics": None}
+
+
+# ------------------------------------------------------------------ Ban Tăng trưởng & KPI
+
+@app.get("/api/growth")
+def growth_overview(db: Session = Depends(get_db), actor: Actor = Depends(current_actor)):
+    from ..agents.growth import S_GUIDANCE, content_guidance, effective_stories_per_day, pillar_weights, serialize
+    from ..models import GrowthPlan
+    from ..workers.jobs import get_setting
+
+    s = get_settings()
+    plans = list(db.scalars(select(GrowthPlan).order_by(GrowthPlan.at.desc()).limit(30)))
+    memo = next((p for p in plans if p.memo), None)
+    ch = db.scalar(select(Channel).where(Channel.selected.is_(True)))
+    from ..services.youtube.client import ANALYTICS_SCOPE, MONETARY_SCOPE
+
+    scopes = set((ch.scopes or []) if ch else [])
+    return {
+        "latest": serialize(plans[0]) if plans else None,
+        "memo": {"at": memo.at, "memo": memo.memo, "is_demo": memo.is_demo} if memo else None,
+        "history": [{"id": p.id, "at": p.at, "kpi_usd": p.kpi_usd, "projected_usd": (p.status or {}).get("projected_usd"),
+                     "mtd_usd": (p.status or {}).get("mtd_usd"), "applied": p.applied, "actor": p.actor,
+                     "changes": [d for d in (p.decisions or []) if d.get("applied")]} for p in plans],
+        "config": {"kpi_monthly_revenue_usd": s.kpi_monthly_revenue_usd, "growth_auto_apply": s.growth_auto_apply,
+                   "growth_max_stories_per_day": s.growth_max_stories_per_day, "owner_stories_per_day": s.stories_per_day,
+                   "max_videos_per_week": s.max_videos_per_week},
+        "current": {"stories_per_day": effective_stories_per_day(db), "pillar_weights": pillar_weights(db),
+                    "content_guidance": content_guidance(db) or get_setting(db, S_GUIDANCE, "")},
+        "channel": {"title": ch.title if ch else None, "connected": bool(ch and (ch.oauth_token_encrypted or ch.is_demo)),
+                    "analytics_scope": ANALYTICS_SCOPE in scopes or bool(ch and ch.is_demo),
+                    "monetary_scope": MONETARY_SCOPE in scopes or bool(ch and ch.is_demo)},
+        "mode": s.app_mode,
+    }
+
+
+class GrowthRunIn(BaseModel):
+    memo: bool = False  # viết lại bản ghi nhớ chiến lược ngay (tốn một lần gọi Claude Haiku)
+
+
+@app.post("/api/growth/run")
+def growth_run(body: GrowthRunIn = Body(default=GrowthRunIn()), db: Session = Depends(get_db),
+               actor: Actor = Depends(require_owner)):
+    from ..agents.growth import growth_tick
+
+    return growth_tick(db, actor=actor.name, force_memo=body.memo)
 
 
 @app.get("/api/audit")

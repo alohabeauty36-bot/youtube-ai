@@ -33,6 +33,7 @@ GROUPS = {
     "mode": "Chế độ chạy",
     "budget": "Ngân sách AI (Ban Tài chính)",
     "agents": "Bộ não phòng ban (học từ Claude/ChatGPT)",
+    "growth": "Ban Tăng trưởng & KPI doanh thu",
     "essay": "Phòng Bài luận (research web + viết bài luận)",
     "anthropic": "Claude (Anthropic API)",
     "tts": "Giọng đọc VieNeu-TTS",
@@ -88,6 +89,15 @@ FIELDS: list[ConfigField] = [
     ConfigField("agent_master_rate", "Bậc thầy: tỷ lệ đạt (0.95 = 95%)", "agents", "float"),
     ConfigField("agent_master_audit_rate", "Bậc thầy: tỷ lệ việc vẫn gửi thầy kiểm tra", "agents", "float",
                 help="0 = phòng đạt Bậc thầy tự làm hoàn toàn, chỉ nhờ thầy khi bài của trò không qua QA."),
+    ConfigField("kpi_monthly_revenue_usd", "KPI doanh thu quảng cáo mỗi tháng (USD)", "growth", "float",
+                help="Doanh thu quảng cáo YouTube ước tính (estimatedAdRevenue). 0 = chưa đặt KPI. Ban Tăng trưởng "
+                     "đối chiếu mỗi ngày và tự chỉnh kế hoạch sản xuất để bám KPI."),
+    ConfigField("growth_auto_apply", "Ban Tăng trưởng tự áp dụng kế hoạch", "growth", "bool",
+                help="Bật: tự đổi số video/ngày và ưu tiên trụ cột cho Autopilot, trong trần ngân sách. "
+                     "Không bao giờ tự công khai video, không tự tăng trần chi tiêu."),
+    ConfigField("growth_max_stories_per_day", "Trần số video/ngày Ban Tăng trưởng được đặt", "growth", "int"),
+    ConfigField("model_growth", "Model Claude — Ban Tăng trưởng (bản ghi nhớ hằng tuần)", "growth", "text",
+                placeholder="claude-haiku-5-5"),
     ConfigField("model_essay", "Model Claude — Phòng Bài luận", "essay", "text", placeholder="claude-sonnet-5-5"),
     ConfigField("essay_teacher_strategy", "Thầy của Phòng Bài luận", "essay", "select", ("alternate", "anthropic", "openai", "inherit"),
                 "alternate: luân phiên Claude và ChatGPT để trò học cách viết của cả hai. inherit: theo 'Thầy chính'."),
@@ -244,6 +254,10 @@ def save(session, values: dict[str, Any], clear: list[str], actor: str) -> SaveR
         raise ValueError("Thời lượng tối thiểu phải nhỏ hơn tối đa")
     if not merged.get("duration_min_seconds", 0) <= merged.get("duration_target_seconds", 0) <= merged.get("duration_max_seconds", 0):
         raise ValueError("Thời lượng mục tiêu phải nằm giữa tối thiểu và tối đa")
+    if not 0 <= float(merged.get("kpi_monthly_revenue_usd", 0)) <= 10_000_000:
+        raise ValueError("KPI doanh thu tháng phải là số USD không âm")
+    if not 1 <= int(merged.get("growth_max_stories_per_day", 6)) <= 24:
+        raise ValueError("Trần số video/ngày của Ban Tăng trưởng phải trong khoảng 1–24")
     if not 0 < float(merged.get("budget_monthly_usd", 50)) <= 10000:
         raise ValueError("Trần chi tiêu tháng phải trong khoảng 0–10.000 USD")
     if not 0 <= float(merged.get("budget_safety_margin", 0.05)) < 0.5:

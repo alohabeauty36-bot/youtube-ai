@@ -61,7 +61,7 @@ Giữ nguyên: cấu hình và key đã nhập, **sổ cái ngân sách** (tiề
 
 **Truy cập:** khi mở trên chính máy chạy ứng dụng (127.0.0.1), bạn không cần mật khẩu. Khi truy cập từ máy khác, ứng dụng yêu cầu mật khẩu chủ kênh hoặc biên tập viên. Nếu ứng dụng nằm sau reverse proxy, các request có header proxy **không** được tin là truy cập cục bộ.
 
-**Dành cho lập trình viên:** `make test` chạy 145 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8010.
+**Dành cho lập trình viên:** `make test` chạy 153 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8010.
 
 ### Windows 11
 Nên dùng WSL2 (Ubuntu) với Docker Desktop. Cách native cũng chạy được với Python 3.12, FFmpeg (gyan.dev, có libass) và `pip install vieneu` (CPU/ONNX). GPU CUDA trên Windows cần cài `torch==2.8.0` cu128 trước, theo README của VieNeu.
@@ -79,7 +79,7 @@ Mặc định **50 USD/tháng** cho Claude + ChatGPT (chỉnh ở **Thiết lậ
 |---|---|---|
 | Tháng | 50 USD, giữ lại 5% phòng sai số → chi tối đa 47,5 USD | cứng |
 | Ngày | phần còn lại của tháng ÷ số ngày còn lại, **không quá 2× bình quân** (~3,2 USD) | chống một ngày tiêu quá tay |
-| Phòng ban | Săn tin 14%, Nghiên cứu 22%, Biên kịch 45%, Biên tập 6%, Bài luận 10%, Đào tạo 3% | một phòng không ăn hết phần của phòng khác |
+| Phòng ban | Săn tin 14%, Nghiên cứu 22%, Biên kịch 43%, Biên tập 6%, Bài luận 10%, Đào tạo 3%, Tăng trưởng 2% | một phòng không ăn hết phần của phòng khác |
 | Mỗi video | 0,75 USD (đủ cho ResearchPack + kịch bản + 3 lần viết lại) | |
 | Số tin | Autopilot tối đa **3 tin/ngày**, chỉ mở tin mới khi còn đủ tiền cho một video | |
 
@@ -107,6 +107,21 @@ Cài trò: cài Ollama → `ollama pull qwen2.5:7b-instruct` → **Thiết lập
 
 Dùng thêm ChatGPT: nhập OpenAI API key, tên model, và **bắt buộc** khai giá trong *Bảng giá bổ sung*, ví dụ `{"ten-model": [gia_vao, gia_ra]}` (USD/1 triệu token). Không biết giá thì Ban Tài chính từ chối gọi.
 
+### Ban Tăng trưởng — theo dõi kênh và chạy theo KPI doanh thu tháng
+Trang **Tăng trưởng & KPI**: nhập KPI doanh thu quảng cáo mỗi tháng (USD). Ban Tăng trưởng đọc **YouTube Analytics** của kênh qua OAuth chính thức (chỉ đọc), mỗi sáng 6:23 hoặc khi bấm **Đồng bộ & lập kế hoạch**:
+
+1. **Đồng bộ** ($0): lượt xem, giờ xem, người đăng ký, doanh thu quảng cáo ước tính (`estimatedAdRevenue`) theo ngày ~62 ngày gần nhất; top 200 video trong 28 ngày; giờ xem 365 ngày.
+2. **Tính KPI** ($0): đã kiếm trong tháng, dự báo cuối tháng (tốc độ 7 ngày gần nhất), còn thiếu, RPM 28 ngày, lượt xem/ngày cần có, lượt xem trung bình của một video mới.
+3. **Tự chỉnh kế hoạch** ($0, khi bật *Ban Tăng trưởng tự áp dụng kế hoạch*): số video/ngày cho Autopilot (đang thiếu KPI thì không bao giờ giảm; vượt rõ thì có thể giảm để tiết kiệm), và ưu tiên trụ cột P1/P2/P3 theo doanh thu (hoặc lượt xem) mỗi video, mỗi trụ cột giữ tối thiểu 15% để tiếp tục thử. Luôn nằm trong: trần ngân sách AI, *Trần số video/ngày Ban Tăng trưởng được đặt* (mặc định 6) và *Tối đa video/tuần*. Ưu tiên trụ cột chỉ đổi thứ tự tin; ngưỡng điểm và kiểm chứng claim giữ nguyên.
+4. **Việc chỉ chủ kênh làm được**: công khai video đang riêng tư (video riêng tư không có doanh thu), nâng trần đang chặn KPI (ghi rõ trần nào), bật Autopilot/lịch quét, kết nối lại kênh để cấp quyền Analytics.
+5. **Bản ghi nhớ chiến lược** (tối đa 1 lần/tuần, Claude Haiku, phần ngân sách 2% ≈ 0,95 USD/tháng): chẩn đoán, hành động (agent/chủ kênh), thử nghiệm, rủi ro, và *định hướng cho Phòng Biên kịch*. Định hướng này được đưa vào kịch bản như ghi chú biên tập, không phải dữ kiện. Prompt cấm mọi cách vi phạm chính sách YouTube (mua lượt xem, sub4sub, nội dung lặp hàng loạt, tiêu đề sai sự thật).
+
+**Kết nối:** kênh đã kết nối trước bản này cần bấm **Kết nối kênh YouTube** lại để cấp thêm quyền `yt-analytics.readonly` và `yt-analytics-monetary.readonly`. Doanh thu chỉ đọc được khi kênh đã vào YouTube Partner Program; nếu chưa, Ban Tăng trưởng đặt sản lượng ở mức cao nhất trong trần để tăng giờ xem và người đăng ký, và hiện tiến độ điều kiện YPP (1.000 người đăng ký + 4.000 giờ xem công khai/12 tháng; người đăng ký mới từ 01/02/2027 cần 8.000 giờ).
+
+**Không làm:** không tự công khai video, không sửa tiêu đề/thumbnail video trên kênh, không tự tăng trần chi tiêu. Mọi lần chạy được lưu ở *Lịch sử chạy* và audit log.
+
+**Kỳ vọng thực tế:** KPI là mục tiêu để điều phối, không phải cam kết. Mô hình "cần bao nhiêu video/ngày" là ước tính thô từ số liệu 28 ngày; cuối tháng, video mới chưa kịp có nhiều lượt xem. Kênh dùng giọng AI cần mỗi video có giá trị phân tích riêng để giữ điều kiện kiếm tiền.
+
 ### Phòng Bài luận — tự research web và viết bài luận theo chủ đề
 Trang **Bài luận**: nhập chủ đề, yêu cầu, kiểu bài (nghị luận, phân tích, thuyết minh, so sánh), số từ.
 
@@ -129,7 +144,7 @@ backend/ev_studio/
                          UploadPrivate, NotifyTelegram, RefreshStatus (+ NewsIngestion trong services/ingest.py)
   workers/orchestrator.py  idempotency key + checkpoint, retry exponential backoff, lease theo story
   workers/executor.py    thread pool (inline) hoặc Celery (JOB_EXECUTOR=celery)
-  workers/schedules.py   APScheduler: quét tin mỗi 3h + Autopilot; RefreshStatus mỗi 6h (chỉ khi bật)
+  workers/schedules.py   APScheduler: quét tin mỗi 3h + Autopilot; RefreshStatus mỗi 6h (chỉ khi bật); Ban Tăng trưởng 6:23 hằng ngày
   state_machine.py       DISCOVERED → … → EDITOR_REVIEW → APPROVED_PRIVATE / REVISION_REQUESTED / REJECTED / PUBLISHED_MANUALLY_OBSERVED
   services/              sources, ranker, fact_checker, claude_writer, script_qa, tts/, media/, storyboard,
                          subtitles, renderer, thumbnail, seo, media_qa, youtube/, telegram/
@@ -138,10 +153,10 @@ prompts/pillars/P1|P2|P3.md       hồ sơ trụ cột
 prompts/reference/…               Mục IV nguyên văn (tham khảo văn phong)
 frontend/                         Next.js 15 + TypeScript (xuất tĩnh → backend/ev_studio/web_dist, backend phục vụ)
 migrations/                       Alembic
-tests/                            145 test
+tests/                            153 test
 run.py, start.bat, start.sh       chạy bằng một lệnh
 backend/ev_studio/runtime_config.py  cấu hình API lưu mã hoá trong DB
-backend/ev_studio/agents/            Ban Tài chính (budget, pricing) + bộ não phòng ban (brain, memory, teachers, learning, writer)
+backend/ev_studio/agents/            Ban Tài chính (budget, pricing) + bộ não phòng ban (brain, memory, teachers, learning, writer) + Ban Tăng trưởng (growth)
 backend/ev_studio/error_log.py       Nhật ký lỗi: WARNING+ của ev_studio.* → bảng error_logs (che secret, gộp lỗi trùng)
 ```
 

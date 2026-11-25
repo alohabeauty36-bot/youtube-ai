@@ -78,6 +78,12 @@ class Settings(BaseSettings):
     agent_master_rate: float = 0.95
     agent_master_audit_rate: float = 0.0
 
+    # --- Ban Tăng trưởng: theo dõi kênh bằng YouTube Analytics, chạy theo KPI doanh thu tháng ---
+    kpi_monthly_revenue_usd: float = 0.0  # 0 = chưa đặt KPI. Doanh thu quảng cáo YouTube (estimatedAdRevenue), USD
+    growth_auto_apply: bool = True  # Ban Tăng trưởng tự chỉnh số video/ngày + tỷ trọng trụ cột (trong trần ngân sách)
+    growth_max_stories_per_day: int = 6  # trần cứng số video/ngày mà Ban Tăng trưởng được đặt
+    model_growth: str = "claude-haiku-5-5"  # viết bản ghi nhớ chiến lược hằng tuần (rẻ)
+
     # --- Phòng Bài luận: tự research web + viết bài luận theo chủ đề ---
     model_essay: str = "claude-sonnet-5-5"
     essay_teacher_strategy: Literal["inherit", "anthropic", "openai", "alternate"] = "alternate"  # học cả Claude lẫn ChatGPT

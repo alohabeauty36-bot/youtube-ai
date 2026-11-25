@@ -508,3 +508,67 @@ class Essay(Base):
     feedback: Mapped[str | None] = mapped_column(Text)
     error: Mapped[str | None] = mapped_column(Text)
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+# ------------------------------------------------------------------ Ban Tăng trưởng (YouTube Analytics + KPI doanh thu)
+
+class ChannelMetricDay(Base):
+    """Số liệu kênh theo ngày, đọc từ YouTube Analytics API (chỉ đọc). Doanh thu = None khi kênh chưa bật kiếm tiền
+    hoặc chưa cấp quyền yt-analytics-monetary.readonly."""
+    __tablename__ = "channel_metric_days"
+    __table_args__ = (UniqueConstraint("channel_id", "day", name="uq_metric_day"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    channel_id: Mapped[str] = mapped_column(String(64), index=True)  # youtube_channel_id
+    day: Mapped[str] = mapped_column(String(10), index=True)  # YYYY-MM-DD (múi giờ báo cáo của YouTube)
+    views: Mapped[int] = mapped_column(Integer, default=0)
+    watch_minutes: Mapped[float] = mapped_column(Float, default=0.0)
+    avg_view_seconds: Mapped[float] = mapped_column(Float, default=0.0)
+    subs_gained: Mapped[int] = mapped_column(Integer, default=0)
+    subs_lost: Mapped[int] = mapped_column(Integer, default=0)
+    revenue_usd: Mapped[float | None] = mapped_column(Float)  # estimatedRevenue
+    ad_revenue_usd: Mapped[float | None] = mapped_column(Float)  # estimatedAdRevenue — dùng cho KPI quảng cáo
+    playback_cpm_usd: Mapped[float | None] = mapped_column(Float)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class VideoMetric(Base):
+    """Hiệu suất từng video trong cửa sổ 28 ngày gần nhất (ghi đè mỗi lần đồng bộ)."""
+    __tablename__ = "video_metrics"
+    __table_args__ = (UniqueConstraint("channel_id", "youtube_video_id", name="uq_video_metric"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    channel_id: Mapped[str] = mapped_column(String(64), index=True)
+    youtube_video_id: Mapped[str] = mapped_column(String(64), index=True)
+    title: Mapped[str | None] = mapped_column(Text)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    privacy: Mapped[str | None] = mapped_column(String(20))
+    story_id: Mapped[str | None] = mapped_column(String(36))
+    pillar: Mapped[str | None] = mapped_column(String(4))
+    period_start: Mapped[str] = mapped_column(String(10))
+    period_end: Mapped[str] = mapped_column(String(10))
+    views: Mapped[int] = mapped_column(Integer, default=0)
+    watch_minutes: Mapped[float] = mapped_column(Float, default=0.0)
+    avg_view_seconds: Mapped[float] = mapped_column(Float, default=0.0)
+    avg_view_pct: Mapped[float] = mapped_column(Float, default=0.0)
+    subs_gained: Mapped[int] = mapped_column(Integer, default=0)
+    revenue_usd: Mapped[float | None] = mapped_column(Float)
+    ad_revenue_usd: Mapped[float | None] = mapped_column(Float)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class GrowthPlan(Base):
+    """Mỗi lần Ban Tăng trưởng chạy: tình hình KPI, các quyết định đã/chưa áp dụng và lý do, bản ghi nhớ chiến lược."""
+    __tablename__ = "growth_plans"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+    month: Mapped[str] = mapped_column(String(7), index=True)  # YYYY-MM
+    channel_id: Mapped[str | None] = mapped_column(String(64))
+    kpi_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    status: Mapped[Any] = mapped_column(JSON, default=dict)  # số liệu KPI: đã kiếm, dự báo, thiếu, RPM, lượt xem cần…
+    decisions: Mapped[Any] = mapped_column(JSON, default=list)  # [{key, from, to, reason, applied}]
+    owner_actions: Mapped[Any] = mapped_column(JSON, default=list)  # việc chỉ chủ kênh làm được (công khai video, tăng trần…)
+    memo: Mapped[Any] = mapped_column(JSON)  # bản ghi nhớ chiến lược do AI viết (hằng tuần)
+    applied: Mapped[bool] = mapped_column(Boolean, default=False)
+    actor: Mapped[str] = mapped_column(String(40), default="system")
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
