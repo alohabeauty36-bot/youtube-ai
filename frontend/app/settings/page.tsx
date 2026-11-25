@@ -6,7 +6,13 @@ import { ConfigPanel } from "@/components/config";
 
 export default function Settings() {
   const [tok, setTok] = useState(""); const [err, setErr] = useState<any>(null);
-  useEffect(() => setTok(getToken()), []);
+  const [oauthMsg, setOauthMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  useEffect(() => {
+    setTok(getToken());
+    const q = new URLSearchParams(window.location.search);
+    if (q.get("oauth_error")) setOauthMsg({ ok: false, text: q.get("oauth_error")! });
+    else if (q.get("connected")) setOauthMsg({ ok: true, text: `Đã kết nối kênh ${q.get("connected")}. Nhớ bấm "Chọn làm kênh đích" nếu kênh chưa được chọn.` });
+  }, []);
   const integ = useLoad<any>("/api/system/integrations");
   const st = useLoad<any>("/api/settings");
   const ch = useLoad<any[]>("/api/settings/channels");
@@ -17,6 +23,7 @@ export default function Settings() {
   return (
     <>
       <h2>Thiết lập & tài khoản</h2>
+      {oauthMsg && <div className={oauthMsg.ok ? "hint" : "error"}><b>{oauthMsg.ok ? "Kết nối YouTube thành công." : "Kết nối YouTube chưa thành công."}</b> {oauthMsg.text}</div>}
       <ErrorBox error={err || integ.error} />
       <ConfigPanel onChanged={() => { integ.reload(); st.reload(); ch.reload(); src.reload(); }} />
       <h3>Tài khoản & tự động hoá</h3>
