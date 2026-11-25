@@ -72,6 +72,12 @@ class GoogleAnalyticsClient:
                 if st in (500, 502, 503, 504) and attempt + 1 < self.max_retries:
                     time.sleep(min(30, 2 ** attempt + random.random()))
                     continue
+                text = str(e)
+                if st == 403 and ("accessNotConfigured" in text or "SERVICE_DISABLED" in text or "has not been used" in text):
+                    raise BlockedByCredentials(
+                        "Project Google Cloud chưa bật YouTube Analytics API. Vào console.cloud.google.com → APIs & Services → "
+                        "Library → YouTube Analytics API → Enable, đợi vài phút rồi bấm 'Đồng bộ & lập kế hoạch'. "
+                        "Không cần kết nối lại kênh.") from e
                 if st in (401, 403):
                     if allow_forbidden:
                         return None

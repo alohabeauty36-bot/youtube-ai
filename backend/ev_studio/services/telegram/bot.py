@@ -32,12 +32,13 @@ class RealTelegramClient:
         self._base = f"https://api.telegram.org/bot{token}"
         self.client = client or httpx.Client(timeout=30)
 
-    def _call(self, method: str, data: dict | None = None, files: dict | None = None) -> dict:
+    def _call(self, method: str, data: dict | None = None, files: dict | None = None, timeout: float | None = None) -> dict:
+        kw = {"timeout": httpx.Timeout(15.0, read=timeout)} if timeout else {}
         try:
             if files:
-                r = self.client.post(f"{self._base}/{method}", data=data, files=files)
+                r = self.client.post(f"{self._base}/{method}", data=data, files=files, **kw)
             else:
-                r = self.client.post(f"{self._base}/{method}", json=data or {})
+                r = self.client.post(f"{self._base}/{method}", json=data or {}, **kw)
         except httpx.HTTPError as e:
             raise RetryableError(f"Telegram mất kết nối: {type(e).__name__}") from None
         if r.status_code == 429 or r.status_code >= 500:
@@ -46,6 +47,9 @@ class RealTelegramClient:
         if not body.get("ok"):
             if r.status_code in (401, 404):
                 raise BlockedByCredentials("TELEGRAM_BOT_TOKEN không hợp lệ")
+            if r.status_code == 409:
+                raise PermanentError("Telegram 409 Conflict: bot đang được một chương trình khác nhận tin (app thứ hai đang chạy, "
+                                     "hoặc bot còn gắn webhook). Tắt bản app chạy trùng, hoặc xoá webhook của bot.")
             raise PermanentError(f"Telegram lỗi: {redact(body.get('description', r.status_code))}")
         return body["result"]
 
@@ -65,8 +69,12 @@ class RealTelegramClient:
     def answer_callback(self, callback_id, text):
         self._call("answerCallbackQuery", {"callback_query_id": callback_id, "text": text[:190]})
 
+    POLL_SECONDS = 25
+
     def get_updates(self, offset):
-        return self._call("getUpdates", {"offset": offset, "timeout": 25, "allowed_updates": ["callback_query"]})
+        # long-poll: Telegram giữ kết nối tối đa POLL_SECONDS → chờ đọc dư 20 giây để mạng chậm không bị tính là lỗi
+        return self._call("getUpdates", {"offset": offset, "timeout": self.POLL_SECONDS, "allowed_updates": ["callback_query"]},
+                          timeout=self.POLL_SECONDS + 20)
 
 
 class DemoTelegramClient:
