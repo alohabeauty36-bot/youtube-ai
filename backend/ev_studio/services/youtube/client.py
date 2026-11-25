@@ -238,13 +238,17 @@ class DemoYouTubeClient:
         self._save(db)
 
 
-def make_oauth_flow(settings: Settings, state: str):
+def make_oauth_flow(settings: Settings, state: str, code_verifier: str | None = None):
+    """PKCE: lúc bắt đầu, thư viện tự sinh `code_verifier` (gửi Google `code_challenge`). Bước callback tạo Flow MỚI nên
+    phải truyền lại đúng `code_verifier` đã lưu, nếu không Google trả invalid_grant."""
     from google_auth_oauthlib.flow import Flow
 
     redirect = settings.public_base_url.rstrip("/") + "/api/oauth/google/callback"
+    kw = {"scopes": SCOPES, "state": state, "redirect_uri": redirect, "code_verifier": code_verifier,
+          "autogenerate_code_verifier": code_verifier is None}
     if settings.google_client_secrets_json:
         cfg = json.loads(settings.google_client_secrets_json.get_secret_value())
-        return Flow.from_client_config(cfg, scopes=SCOPES, state=state, redirect_uri=redirect)
+        return Flow.from_client_config(cfg, **kw)
     if settings.google_client_secrets_file and Path(settings.google_client_secrets_file).exists():
-        return Flow.from_client_secrets_file(str(settings.google_client_secrets_file), scopes=SCOPES, state=state, redirect_uri=redirect)
+        return Flow.from_client_secrets_file(str(settings.google_client_secrets_file), **kw)
     raise BlockedByCredentials("Chưa có OAuth client — dán client_secret.json trong Thiết lập → Cấu hình API → YouTube")

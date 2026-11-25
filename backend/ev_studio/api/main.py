@@ -804,29 +804,71 @@ def select_channel(cid: str, db: Session = Depends(get_db), actor: Actor = Depen
     return {"ok": True}
 
 
+OAUTH_PKCE_PREFIX = "oauth_pkce:"
+OAUTH_PKCE_TTL = 900  # giây — bằng hạn của state đã ký
+
+
+def _pkce_key(state: str) -> str:
+    import hashlib
+
+    return OAUTH_PKCE_PREFIX + hashlib.sha256(state.encode()).hexdigest()[:40]
+
+
 @app.get("/api/oauth/google/start")
-def oauth_start(actor: Actor = Depends(require_owner)):
+def oauth_start(db: Session = Depends(get_db), actor: Actor = Depends(require_owner)):
+    from datetime import timedelta
+
+    from ..models import AppSetting
     from ..services.youtube.client import make_oauth_flow
 
-    state = sign_link("oauth", "google", 900)
+    state = sign_link("oauth", "google", OAUTH_PKCE_TTL)
     flow = make_oauth_flow(get_settings(), state)
     url, _ = flow.authorization_url(access_type="offline", include_granted_scopes="true", prompt="consent select_account")
+    # lưu code_verifier (mã hoá) để bước callback dùng lại; dọn các phiên cũ đã hết hạn
+    cutoff = (now() - timedelta(seconds=OAUTH_PKCE_TTL)).timestamp()
+    for row in db.scalars(select(AppSetting).where(AppSetting.key.like(OAUTH_PKCE_PREFIX + "%"))):
+        if not isinstance(row.value, dict) or row.value.get("at", 0) < cutoff:
+            db.delete(row)
+    if getattr(flow, "code_verifier", None):
+        db.merge(AppSetting(key=_pkce_key(state), value={"v": encrypt_str(flow.code_verifier), "at": now().timestamp()}))
+    db.commit()
     return {"authorization_url": url}
 
 
+def _oauth_fail(msg: str):
+    from urllib.parse import quote
+
+    log.warning("Kết nối kênh YouTube thất bại: %s", msg, extra={"evcs_source": "youtube"})
+    return RedirectResponse(f"{get_settings().public_base_url.rstrip('/')}/settings/?oauth_error={quote(msg)}")
+
+
 @app.get("/api/oauth/google/callback")
-def oauth_callback(state: str, code: str, db: Session = Depends(get_db)):
+def oauth_callback(state: str, code: str | None = None, error: str | None = None, db: Session = Depends(get_db)):
+    from ..models import AppSetting
+    from ..security import decrypt_str
     from ..services.youtube.client import GoogleYouTubeClient, make_oauth_flow
 
     s = get_settings()
     if not verify_link("oauth", "google", state):
         raise HTTPException(403, "OAuth state không hợp lệ/hết hạn (CSRF)")
-    flow = make_oauth_flow(s, state)
-    flow.fetch_token(code=code)
+    row = db.get(AppSetting, _pkce_key(state))
+    verifier = decrypt_str(row.value["v"]) if row and isinstance(row.value, dict) and row.value.get("v") else None
+    if row:
+        db.delete(row)  # dùng một lần
+        db.commit()
+    if error or not code:
+        return _oauth_fail("Bạn chưa đồng ý cấp quyền trên Google" + (f" ({error})" if error else "") + ". Bấm 'Kết nối kênh YouTube' để thử lại.")
+    flow = make_oauth_flow(s, state, code_verifier=verifier)
+    try:
+        flow.fetch_token(code=code)
+    except Exception as e:  # noqa: BLE001 — invalid_grant: mã đã dùng/hết hạn, phiên cũ, đồng hồ máy lệch…
+        return _oauth_fail(f"Google từ chối đổi mã lấy token ({redact(e)}). Bấm 'Kết nối kênh YouTube' lại một lần nữa; "
+                           "không tải lại (F5) trang sau khi Google chuyển về.")
     creds = flow.credentials
     me = GoogleYouTubeClient(creds).get_my_channel()
     if s.youtube_expected_channel_id and me["id"] != s.youtube_expected_channel_id:
-        raise HTTPException(409, f"Bạn đã chọn kênh '{me['title']}' nhưng kênh đích cấu hình là {s.youtube_expected_channel_id}")
+        return _oauth_fail(f"Bạn đã chọn kênh '{me['title']}' ({me['id']}) nhưng ID kênh đích là {s.youtube_expected_channel_id}. "
+                           "Kết nối lại và chọn đúng kênh.")
     ch = db.scalar(select(Channel).where(Channel.youtube_channel_id == me["id"])) or Channel(youtube_channel_id=me["id"], title=me["title"])
     ch.title, ch.oauth_token_encrypted, ch.scopes, ch.token_refreshed_at = me["title"], encrypt_str(creds.to_json()), list(creds.scopes or []), now()
     db.add(ch)

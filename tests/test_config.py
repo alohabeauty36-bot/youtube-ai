@@ -167,3 +167,49 @@ def test_web_ui_served_by_backend(client):
     assert client.get("/settings/").status_code == 200
     assert client.get("/story/?id=abc").status_code == 200
     assert client.get("/api/health").json()["status"] == "ok"
+
+
+def test_oauth_pkce_verifier_survives_from_start_to_callback(clean_config, client, monkeypatch):
+    """Lỗi thật 25/11/2026: callback tạo Flow mới không có code_verifier → Google trả invalid_grant."""
+    from ev_studio.services.youtube import client as ytc
+
+    seen = {}
+
+    class FakeFlow:
+        def __init__(self, state, code_verifier):
+            self.state, self.code_verifier = state, code_verifier or "verifier-xyz-123"
+            self.credentials = SimpleNamespace(to_json=lambda: "{}", scopes=ytc.SCOPES)
+
+        def authorization_url(self, **kw):
+            return f"https://accounts.google.com/o/oauth2/auth?state={self.state}&code_challenge=abc", self.state
+
+        def fetch_token(self, code):
+            seen["verifier"], seen["code"] = self.code_verifier, code
+
+    monkeypatch.setattr(ytc, "make_oauth_flow", lambda s, state, code_verifier=None: FakeFlow(state, code_verifier))
+
+    class FakeYT:
+        def __init__(self, creds):
+            pass
+
+        def get_my_channel(self):
+            return {"id": "UC6-test", "title": "Vựa Tin 365"}
+
+    monkeypatch.setattr(ytc, "GoogleYouTubeClient", FakeYT)
+    url = client.get("/api/oauth/google/start").json()["authorization_url"]
+    state = url.split("state=")[1].split("&")[0]
+    r = client.get("/api/oauth/google/callback", params={"state": state, "code": "4/abc"}, follow_redirects=False)
+    assert r.status_code in (302, 307) and "connected=UC6-test" in r.headers["location"]
+    assert seen == {"verifier": "verifier-xyz-123", "code": "4/abc"}
+    # mã một lần: gọi lại cùng state thì không còn verifier → Google sẽ từ chối → báo lỗi thân thiện, không 500
+    def boom(code):
+        raise RuntimeError("(invalid_grant) Bad Request")
+    monkeypatch.setattr(FakeFlow, "fetch_token", lambda self, code: boom(code))
+    r2 = client.get("/api/oauth/google/callback", params={"state": state, "code": "4/abc"}, follow_redirects=False)
+    assert r2.status_code in (302, 307) and "oauth_error=" in r2.headers["location"]
+    r3 = client.get("/api/oauth/google/callback", params={"state": state, "error": "access_denied"}, follow_redirects=False)
+    assert "oauth_error=" in r3.headers["location"]
+    from ev_studio.models import Channel
+    with SessionLocal() as s:
+        s.execute(delete(Channel).where(Channel.youtube_channel_id == "UC6-test"))
+        s.commit()
