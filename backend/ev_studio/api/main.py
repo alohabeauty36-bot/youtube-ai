@@ -200,7 +200,9 @@ def integrations(actor: Actor = Depends(current_actor)):
         "tts_provider": s.tts_provider, "voice": s.vieneu_voice,
         "youtube": st(bool(s.google_client_secrets_json or (s.google_client_secrets_file and Path(s.google_client_secrets_file).exists())), s.is_demo),
         "telegram": st(bool(s.telegram_bot_token and s.allowed_chat_ids), s.is_demo),
-        "pexels": st(bool(s.pexels_api_key), s.is_demo),
+        "pixabay": st(bool(s.pixabay_api_key), s.is_demo),
+        # Pexels dừng cấp key mới → chỉ là nguồn phụ cho ai còn key cũ, thiếu key không phải lỗi
+        "pexels": "DEMO" if s.is_demo else _optional(True, bool(s.pexels_api_key)),
         # ảnh AI là tuỳ chọn: thiếu key chỉ là "chưa nhập", video vẫn làm được bằng tư liệu khác
         "cloudflare": _optional(s.ai_image_provider in ("auto", "cloudflare"), bool(s.cloudflare_account_id and s.cloudflare_api_token)),
         "fal": _optional(s.ai_image_provider in ("auto", "fal"), bool(s.fal_api_key)),

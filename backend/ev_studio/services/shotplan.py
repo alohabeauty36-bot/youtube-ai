@@ -1,6 +1,6 @@
 """Phòng Đạo diễn hình ảnh: lên danh sách cảnh quay cho từng cảnh của video.
 
-Mỗi cảnh (3–9 giây) nhận: loại cảnh, từ khoá tiếng Anh để tìm video/ảnh trong kho tư liệu (Pexels, Wikimedia, thư viện
+Mỗi cảnh (3–9 giây) nhận: loại cảnh, từ khoá tiếng Anh để tìm video/ảnh trong kho tư liệu (Pixabay, Pexels, Wikimedia, thư viện
 chủ kênh), một câu chữ nhấn mạnh ngắn hiện trên màn hình, và (nếu có) số liệu lấy từ claim ĐÃ XÁC MINH.
 - Có Claude (qua bộ não phòng ban, model rẻ): một lần gọi cho cả video, kết quả được kiểm tra lại từng cảnh.
 - Không có Claude / DEMO / kết quả sai: dùng từ điển chủ đề xe điện (miễn phí).
@@ -59,7 +59,7 @@ class ShotPlanLLM(BaseModel):
 
 
 SYSTEM = """Bạn là ĐẠO DIỄN HÌNH ẢNH cho video YouTube bình luận tin xe điện tiếng Việt (dài, giọng đọc AI).
-Với mỗi cảnh (đoạn lời đọc 3–9 giây), chọn hình ảnh minh họa có thật trong kho video/ảnh miễn phí (Pexels, Wikimedia).
+Với mỗi cảnh (đoạn lời đọc 3–9 giây), chọn hình ảnh minh họa có thật trong kho video/ảnh miễn phí (Pixabay, Pexels, Wikimedia).
 
 Trả về DUY NHẤT JSON: {"shots": [{"idx": 0, "kind": "broll|keypoint|question|stat", "query_en": "...", "overlay_vi": "...",
 "image_prompt_en": "...", "claim_id": null}]}, đủ MỌI idx được cho.

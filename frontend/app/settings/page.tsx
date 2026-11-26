@@ -26,7 +26,7 @@ export default function Settings() {
   const integrations = (
     <Card title="Tình trạng kết nối" right={<Badge kind={integ.data?.mode === "demo" ? "demo" : "ok"}>{integ.data?.mode}</Badge>}>
       {integ.data && <table><tbody>
-        {([["anthropic", "Claude (Anthropic)"], ["youtube", "YouTube"], ["telegram", "Telegram"], ["tts", "Giọng đọc VieNeu"], ["pexels", "Pexels"],
+        {([["anthropic", "Claude (Anthropic)"], ["youtube", "YouTube"], ["telegram", "Telegram"], ["tts", "Giọng đọc VieNeu"], ["pixabay", "Pixabay (video/ảnh)"], ["pexels", "Pexels (key cũ)"],
           ["cloudflare", "Cloudflare (ảnh AI miễn phí)"], ["fal", "fal.ai (ảnh AI trả phí)"]] as [string, string][]).map(([k, label]) =>
           <tr key={k}><td>{label}</td><td>{status(k, integ.data[k])}</td></tr>)}
         <tr><td>Model Claude</td><td>{integ.data.anthropic_model}</td></tr><tr><td>TTS</td><td>{integ.data.tts_provider} · giọng {integ.data.voice}</td></tr>
