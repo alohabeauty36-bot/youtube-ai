@@ -22,6 +22,23 @@ def test_health_and_integrations(client):
     assert client.get("/api/health").json()["mode"] == "demo"
     integ = client.get("/api/system/integrations").json()
     assert integ["youtube"] == "DEMO" and "private" in integ["privacy_policy"]
+    # ảnh AI là tuỳ chọn → "chưa nhập key" chứ không phải lỗi; trang Thiết lập hiện trạng thái này ở tab Ảnh AI
+    assert integ["cloudflare"] in ("NOT_SET", "CONFIGURED", "OFF") and integ["fal"] in ("NOT_SET", "CONFIGURED", "OFF")
+
+
+def test_optional_integration_status():
+    from ev_studio.api.main import _optional
+
+    assert _optional(False, True) == "OFF"
+    assert _optional(True, False) == "NOT_SET"
+    assert _optional(True, True) == "CONFIGURED"
+
+
+def test_settings_has_ai_images_tab(client):
+    cfg = client.get("/api/config").json()
+    assert "ai_images" in cfg["groups"]
+    keys = {f["key"] for f in cfg["fields"] if f["group"] == "ai_images"}
+    assert {"cloudflare_account_id", "cloudflare_api_token", "fal_api_key", "ai_image_provider"} <= keys
 
 
 def test_news_listing_and_blocked_story_creation(client):

@@ -31,7 +31,7 @@ export default function Dashboard() {
       </Card>
       <div className="grid g4">
         <Card title="Kênh đích"><div className="kpi small">{data?.channel || <span className="muted">Chưa chọn</span>}</div>
-          <Link href="/settings">Đổi kênh / kết nối OAuth →</Link></Card>
+          <Link href="/settings/#youtube">Đổi kênh / kết nối OAuth →</Link></Card>
         <Card title="Autopilot Private">
           <div className="row"><Badge kind={st?.autopilot_enabled || st?.full_auto ? "ok" : "info"}>{st?.full_auto ? "Bật (Tự động hoàn toàn)" : st?.autopilot_enabled ? "Đang bật" : "Đang tắt"}</Badge>
             {!st?.full_auto && <button disabled={!!busy} onClick={() => act("ap", () => api("/api/settings", { method: "PATCH", json: { autopilot_enabled: !st?.autopilot_enabled } }))}>

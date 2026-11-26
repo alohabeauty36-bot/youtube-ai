@@ -201,8 +201,17 @@ def integrations(actor: Actor = Depends(current_actor)):
         "youtube": st(bool(s.google_client_secrets_json or (s.google_client_secrets_file and Path(s.google_client_secrets_file).exists())), s.is_demo),
         "telegram": st(bool(s.telegram_bot_token and s.allowed_chat_ids), s.is_demo),
         "pexels": st(bool(s.pexels_api_key), s.is_demo),
-        "privacy_policy": "Mọi upload: privacyStatus=private (không cấu hình được). Không có chức năng công khai.",
+        # ảnh AI là tuỳ chọn: thiếu key chỉ là "chưa nhập", video vẫn làm được bằng tư liệu khác
+        "cloudflare": _optional(s.ai_image_provider in ("auto", "cloudflare"), bool(s.cloudflare_account_id and s.cloudflare_api_token)),
+        "fal": _optional(s.ai_image_provider in ("auto", "fal"), bool(s.fal_api_key)),
+        "ai_image_provider": s.ai_image_provider,
+        "privacy_policy": ("Mọi video tải lên ở trạng thái RIÊNG TƯ (private). Chỉ công khai khi chủ kênh duyệt, hoặc khi bật Tự động hoàn toàn "
+                           "và hết thời gian chờ mà không bấm Dừng trên Telegram."),
     }
+
+
+def _optional(enabled: bool, ok: bool) -> str:
+    return "OFF" if not enabled else ("CONFIGURED" if ok else "NOT_SET")
 
 
 # ------------------------------------------------------------------ sources & news
@@ -859,7 +868,7 @@ def _oauth_fail(msg: str):
     from urllib.parse import quote
 
     log.warning("Kết nối kênh YouTube thất bại: %s", msg, extra={"evcs_source": "youtube"})
-    return RedirectResponse(f"{get_settings().public_base_url.rstrip('/')}/settings/?oauth_error={quote(msg)}")
+    return RedirectResponse(f"{get_settings().public_base_url.rstrip('/')}/settings/?oauth_error={quote(msg)}#youtube")
 
 
 @app.get("/api/oauth/google/callback")
@@ -894,7 +903,7 @@ def oauth_callback(state: str, code: str | None = None, error: str | None = None
     db.add(ch)
     audit(db, "owner", "channel.oauth_connected", "channel", me["id"], title=me["title"])
     db.commit()
-    return RedirectResponse(f"{s.public_base_url.rstrip('/')}/settings/?connected={me['id']}")
+    return RedirectResponse(f"{s.public_base_url.rstrip('/')}/settings/?connected={me['id']}#youtube")
 
 
 @app.post("/api/telegram/webhook")

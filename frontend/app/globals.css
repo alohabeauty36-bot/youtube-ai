@@ -66,3 +66,24 @@ details summary { cursor:pointer; margin-top:6px }
 .essay-list li:hover { background: #0d1626 } .essay-list li.on { border-color: var(--line); background: #0d1626 }
 .sources li { margin-bottom: 6px } .sources li:target { outline: 1px solid #1f4a70; border-radius: 6px }
 .badge.master{ background:#3a2a05; color:#ffd166; border-color:#a07a1a }
+
+/* Thiết lập: mỗi tab là cấu hình của một phần */
+.settings { display:grid; grid-template-columns:240px 1fr; gap:18px; align-items:start }
+.vtabs { position:sticky; top:12px; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:8px; max-height:calc(100vh - 24px); overflow:auto }
+.vtabs-h { color:var(--muted); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; padding:10px 10px 4px }
+.vtabs button { display:flex; width:100%; justify-content:space-between; align-items:center; gap:8px; text-align:left; background:transparent;
+  border:1px solid transparent; border-left:3px solid transparent; border-radius:8px; padding:7px 10px; color:var(--fg) }
+.vtabs button:hover { background:var(--panel2); border-color:transparent }
+.vtabs button.on { background:var(--panel2); border-left-color:var(--accent); font-weight:600 }
+.vtabs .dot { width:8px; height:8px; border-radius:50%; flex:none; background:var(--muted) }
+.vtabs .dot.ok { background:var(--ok) } .vtabs .dot.warn { background:var(--warn) } .vtabs .dot.bad { background:var(--bad) } .vtabs .dot.info { background:#4d6a8f }
+.vtabs-dirty { font-size:11px; color:#ffe17a; white-space:nowrap }
+.settings-body { min-width:0 }
+@media (max-width: 1000px){
+  .settings { grid-template-columns:1fr }
+  .vtabs { position:static; max-height:none; display:flex; gap:4px; overflow-x:auto; padding:6px }
+  .vtabs > div { display:flex; gap:4px; align-items:center }
+  .vtabs-h { display:none }
+  .vtabs button { width:auto; white-space:nowrap; border-left-width:1px }
+  .vtabs button.on { border-color:var(--accent) }
+}

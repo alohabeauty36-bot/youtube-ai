@@ -39,7 +39,7 @@ function Editor() {
               <p><b>Câu hỏi trung tâm:</b> {s.core_question}</p></div> : <p className="muted">Chưa có.</p>}
           </Card>
           <Card title="Audio (VieNeu-TTS)" right={sc?.actual_audio_seconds && <Badge kind={sc.actual_audio_seconds >= 600 ? "ok" : "bad"}>{fmtTime(sc.actual_audio_seconds)} đo thật</Badge>}>
-            {voices.data?.is_demo && <div className="error small">🔇 {voices.data.notice} <Link href="/settings">Mở Thiết lập → Giọng đọc → Kiểm tra</Link></div>}
+            {voices.data?.is_demo && <div className="error small">🔇 {voices.data.notice} <Link href="/settings/#tts">Mở Thiết lập → Giọng đọc → Kiểm tra</Link></div>}
             {s.audio_url && <audio controls src={mediaUrl(s.audio_url)} style={{ width: "100%" }} />}
             <div className="row" style={{ marginTop: 8 }}>
               <button disabled={!sc || !!busy} onClick={async () => { const r = await call("sample", () => api(`/api/stories/${s.id}/tts/sample`, { method: "POST" })); if (r?.url) setSample(mediaUrl(r.url)); }}>

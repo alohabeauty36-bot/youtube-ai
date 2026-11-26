@@ -1,11 +1,39 @@
 "use client";
-import { useEffect, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { api, mediaUrl } from "@/lib/api";
 import { Badge, Card, ErrorBox } from "@/components/ui";
 
 type Field = { key: string; label: string; group: string; kind: string; options: string[]; help: string; placeholder: string;
   restart: boolean; source: string; value?: any; is_set?: boolean; masked?: string | null };
 type Cfg = { groups: Record<string, string>; fields: Field[]; oauth_redirect_uri: string; local_access?: boolean };
+
+// Mỗi tab = cấu hình của một phần. Nhóm trên thanh bên theo việc chủ kênh hay làm.
+export type ExtraTab = { key: string; label: string; section: string; title: string; node: ReactNode };
+const SECTIONS = ["Chung", "Kết nối dịch vụ", "Sản xuất video", "Vận hành"];
+const TAB_META: Record<string, { label: string; section: string }> = {
+  mode: { label: "Chế độ chạy", section: "Chung" },
+  security: { label: "Bảo mật & đăng nhập", section: "Chung" },
+  anthropic: { label: "Claude (Anthropic)", section: "Kết nối dịch vụ" },
+  youtube: { label: "YouTube", section: "Kết nối dịch vụ" },
+  telegram: { label: "Telegram", section: "Kết nối dịch vụ" },
+  tts: { label: "Giọng đọc VieNeu", section: "Kết nối dịch vụ" },
+  media: { label: "Kho tư liệu (Pexels)", section: "Kết nối dịch vụ" },
+  ai_images: { label: "Ảnh AI (Cloudflare · fal.ai)", section: "Kết nối dịch vụ" },
+  editorial: { label: "Biên tập & thời lượng", section: "Sản xuất video" },
+  render: { label: "Dựng video & job", section: "Sản xuất video" },
+  essay: { label: "Phòng Bài luận", section: "Sản xuất video" },
+  sources: { label: "Nguồn tin", section: "Sản xuất video" },
+  auto: { label: "Tự động hoàn toàn", section: "Vận hành" },
+  growth: { label: "Tăng trưởng & KPI", section: "Vận hành" },
+  budget: { label: "Ngân sách AI", section: "Vận hành" },
+  agents: { label: "Bộ não phòng ban", section: "Vận hành" },
+};
+// trạng thái kết nối (từ /api/system/integrations) hiện thành chấm màu cạnh tên tab
+const STATUS_FOR: Record<string, string[]> = { anthropic: ["anthropic"], youtube: ["youtube"], telegram: ["telegram"], tts: ["tts"],
+  media: ["pexels"], ai_images: ["cloudflare", "fal"] };
+const statusKind = (v?: string) => v === "CONFIGURED" ? "ok" : v === "DEMO" || v === "OFF" ? "info" : v === "NOT_SET" ? "warn" : v ? "bad" : "";
+const STATUS_TEXT: Record<string, string> = { CONFIGURED: "đã kết nối", DEMO: "DEMO", OFF: "đang tắt", NOT_SET: "chưa nhập key",
+  BLOCKED_BY_CREDENTIALS: "thiếu key" };
 
 const TEST_FOR: Record<string, string> = { anthropic: "anthropic", tts: "tts", youtube: "youtube", telegram: "telegram", media: "pexels", ai_images: "ai_images" };
 const SOURCE: Record<string, [string, any]> = { ui: ["đã lưu trong giao diện", "ok"], env: ["từ file .env", "info"], default: ["mặc định", "info"] };
@@ -14,8 +42,15 @@ type DemoSummary = { stories: number; news: number; sources: number; channels: n
 const DEMO_LABELS: [keyof DemoSummary, string][] = [["stories", "video"], ["news", "tin"], ["sources", "nguồn tin"], ["channels", "kênh"],
   ["essays", "bài luận"], ["cost_rows", "dòng chi phí ước tính"]];
 
-export function ConfigPanel({ onChanged }: { onChanged?: () => void } = {}) {
+export function ConfigPanel({ onChanged, extras = {}, extraTabs = [], status, initialTab }: {
+  onChanged?: () => void;
+  extras?: Record<string, ReactNode>;  // nội dung thêm dưới cấu hình của tab (vd. nút kết nối kênh trong tab YouTube)
+  extraTabs?: ExtraTab[];               // tab không có cấu hình key (vd. Nguồn tin)
+  status?: Record<string, any> | null;
+  initialTab?: string;
+} = {}) {
   const [cfg, setCfg] = useState<Cfg | null>(null);
+  const [tab, setTab] = useState<string>("");
   const [edits, setEdits] = useState<Record<string, any>>({});
   const [err, setErr] = useState<any>(null);
   const [busy, setBusy] = useState("");
@@ -24,7 +59,26 @@ export function ConfigPanel({ onChanged }: { onChanged?: () => void } = {}) {
   const [purge, setPurge] = useState<DemoSummary | null>(null);
   const load = async () => { try { setCfg(await api<Cfg>("/api/config")); } catch (e) { setErr(e); } };
   useEffect(() => { load(); }, []);
+  useEffect(() => {  // tab lấy từ #hash để tải lại trang hoặc gửi link vẫn mở đúng tab
+    const h = decodeURIComponent(window.location.hash.replace(/^#/, ""));
+    setTab(h || initialTab || "mode");
+    const onHash = () => { const x = decodeURIComponent(window.location.hash.replace(/^#/, "")); if (x) setTab(x); };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, [initialTab]);
   if (!cfg) return <ErrorBox error={err} />;
+
+  type Tab = { key: string; label: string; section: string; title: string; group?: string };
+  const tabs: Tab[] = [
+    ...Object.entries(cfg.groups).map(([g, title]) => ({ key: g, group: g, title, label: TAB_META[g]?.label || title, section: TAB_META[g]?.section || "Khác" })),
+    ...extraTabs.map(t => ({ key: t.key, label: t.label, section: t.section, title: t.title })),
+  ];
+  const sections = [...SECTIONS, ...Array.from(new Set(tabs.map(t => t.section))).filter(x => !SECTIONS.includes(x))];
+  const order = (t: Tab) => { const i = Object.keys(TAB_META).indexOf(t.key); return i < 0 ? 999 : i; };
+  const active = tabs.find(t => t.key === tab) || tabs[0];
+  const pick = (k: string) => { setTab(k); history.replaceState(null, "", `#${k}`); };
+  const dirty = (g?: string) => !!g && cfg.fields.some(f => f.group === g && f.key in edits);
+  const tabStatus = (k: string) => (STATUS_FOR[k] || []).map(x => status?.[x]).filter(Boolean) as string[];
 
   const set = (k: string, v: any) => setEdits(e => ({ ...e, [k]: v }));
   const fieldsOf = (g: string) => cfg.fields.filter(f => f.group === g);
@@ -70,22 +124,45 @@ export function ConfigPanel({ onChanged }: { onChanged?: () => void } = {}) {
       onChange={e => set(f.key, e.target.value)} />;
   };
 
+  const g = active?.group;
+  const stats = active ? tabStatus(active.key) : [];
   return (
-    <>
-      <h3 style={{ marginTop: 0 }}>Cấu hình API & dịch vụ</h3>
-      <p className="small muted">Key/token được mã hoá trước khi lưu và không bao giờ hiển thị lại (chỉ 4 ký tự cuối). Giá trị lưu ở đây ghi đè file .env.
-        {cfg.local_access && " Bạn đang mở trực tiếp trên máy chạy ứng dụng nên không cần mật khẩu."}</p>
-      <ErrorBox error={err} />
-      {notice && <div className="news-card small">✅ {notice}</div>}
-      <div className="grid g2">
-        {Object.entries(cfg.groups).map(([g, title]) => (
-          <Card key={g} title={title} right={<div className="row">
+    <div className="settings">
+      <nav className="vtabs" aria-label="Các phần cấu hình">
+        {sections.map(sec => {
+          const items = tabs.filter(t => t.section === sec).sort((a, b) => order(a) - order(b));
+          if (!items.length) return null;
+          return <div key={sec}>
+            <div className="vtabs-h">{sec}</div>
+            {items.map(t => {
+              const st = tabStatus(t.key);
+              const best = st.includes("CONFIGURED") ? "CONFIGURED" : st[0];
+              return <button key={t.key} className={t.key === active?.key ? "on" : ""} onClick={() => pick(t.key)}
+                aria-current={t.key === active?.key ? "page" : undefined} title={best ? STATUS_TEXT[best] || best : undefined}>
+                <span>{t.label}</span>
+                {dirty(t.group) ? <span className="vtabs-dirty" title="Có thay đổi chưa lưu">chưa lưu</span>
+                  : best && <span className={`dot ${statusKind(best)}`} />}
+              </button>;
+            })}
+          </div>;
+        })}
+      </nav>
+      <div className="settings-body">
+        <ErrorBox error={err} />
+        {notice && <div className="news-card small">✅ {notice}</div>}
+        {active && g && <Card key={g} title={active.title} right={<div className="row">
+            {stats.map((v, i) => <Badge key={i} kind={statusKind(v) as any}>{(STATUS_FOR[active.key]?.length > 1 ? STATUS_FOR[active.key][i] + ": " : "") + (STATUS_TEXT[v] || v)}</Badge>)}
             {TEST_FOR[g] && <button disabled={!!busy} onClick={() => test(g)}>{busy === "t" + g ? "Đang kiểm tra…" : "Kiểm tra"}</button>}
-            <button className="primary" disabled={!!busy || !fieldsOf(g).some(f => f.key in edits)} onClick={() => save(g)}>{busy === g ? "Đang lưu…" : "Lưu"}</button>
+            <button className="primary" disabled={!!busy || !dirty(g)} onClick={() => save(g)}>{busy === g ? "Đang lưu…" : "Lưu"}</button>
           </div>}>
+            {g === "mode" && <p className="small muted" style={{ marginTop: 0 }}>Key/token được mã hoá trước khi lưu và không bao giờ hiển thị lại (chỉ 4 ký tự cuối). Giá trị lưu ở đây ghi đè file .env.
+              {cfg.local_access && " Bạn đang mở trực tiếp trên máy chạy ứng dụng nên không cần mật khẩu."}</p>}
             {g === "youtube" && <div className="small" style={{ marginBottom: 8 }}>Authorized redirect URI cần thêm vào OAuth client:
               <div className="row"><code style={{ background: "#0d1626", padding: "3px 6px", borderRadius: 6 }}>{cfg.oauth_redirect_uri}</code>
                 <button onClick={() => navigator.clipboard?.writeText(cfg.oauth_redirect_uri)}>Sao chép</button></div></div>}
+            {g === "ai_images" && <div className="hint small" style={{ marginBottom: 8 }}>Ảnh AI chỉ dùng khi không tìm được video/ảnh thật phù hợp, luôn khổ 16:9 và gắn nhãn
+              “Ảnh minh họa AI”. Thứ tự: <b>Cloudflare Workers AI</b> (miễn phí ~150 ảnh/ngày) → <b>fal.ai</b> (trả phí, Ban Tài chính tính vào ngân sách).
+              Cloudflare: dash.cloudflare.com → Account ID ở trang tổng quan; tạo API token mẫu “Workers AI”.</div>}
             {g === "mode" && toProduction && !purge && <div className="small" style={{ marginBottom: 8, color: "#ffe17a" }}>
               ⚠️ Lưu chế độ production sẽ xoá toàn bộ dữ liệu DEMO (tin, video, kênh, bài luận giả lập…).</div>}
             {g === "mode" && purge && toProduction && <PurgeConfirm s={purge} busy={busy === g} onCancel={() => setPurge(null)} onConfirm={() => save(g, [], true)} />}
@@ -95,9 +172,10 @@ export function ConfigPanel({ onChanged }: { onChanged?: () => void } = {}) {
                   {f.source === "ui" && <a href="#" onClick={e => { e.preventDefault(); save(g, [f.key]); }}>xoá</a>}</div></td>
               <td>{input(f)}{f.help && <div className="small muted" style={{ marginTop: 3 }}>{f.help}</div>}</td></tr>)}</tbody></table>
             {tests[g] && <TestResult g={g} r={tests[g]} onPick={(k, v) => set(k, v)} onSend={() => test(g, true)} current={edits.telegram_allowed_chat_ids ?? cfg.fields.find(f => f.key === "telegram_allowed_chat_ids")?.value} />}
-          </Card>))}
+          </Card>}
+        {active && (g ? extras[g] : extraTabs.find(t => t.key === active.key)?.node)}
       </div>
-    </>
+    </div>
   );
 }
 
