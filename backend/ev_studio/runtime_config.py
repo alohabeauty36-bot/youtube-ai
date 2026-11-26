@@ -33,6 +33,7 @@ GROUPS = {
     "mode": "Chế độ chạy",
     "budget": "Ngân sách AI (Ban Tài chính)",
     "agents": "Bộ não phòng ban (học từ Claude/ChatGPT)",
+    "auto": "Tự động hoàn toàn",
     "growth": "Ban Tăng trưởng & KPI doanh thu",
     "essay": "Phòng Bài luận (research web + viết bài luận)",
     "anthropic": "Claude (Anthropic API)",
@@ -40,6 +41,7 @@ GROUPS = {
     "youtube": "YouTube (OAuth)",
     "telegram": "Telegram",
     "media": "Kho tư liệu",
+    "ai_images": "Ảnh AI minh họa (Cloudflare / fal.ai)",
     "editorial": "Biên tập & thời lượng",
     "render": "Dựng video & job",
     "security": "Bảo mật dashboard",
@@ -76,6 +78,7 @@ FIELDS: list[ConfigField] = [
     ConfigField("model_research", "Model Claude — Phòng Nghiên cứu", "agents", "text", placeholder="claude-sonnet-5-5"),
     ConfigField("model_script", "Model Claude — Phòng Biên kịch (trống = model mặc định)", "agents", "text"),
     ConfigField("model_editor", "Model Claude — Phòng Biên tập & Ban Đào tạo", "agents", "text", placeholder="claude-haiku-5-5"),
+    ConfigField("model_director", "Model Claude — Phòng Đạo diễn hình ảnh", "agents", "text", placeholder="claude-haiku-5-5"),
     ConfigField("openai_api_key", "OpenAI API key (ChatGPT, tuỳ chọn)", "agents", "secret", placeholder="sk-…"),
     ConfigField("openai_model", "Model ChatGPT", "agents", "text", help="Nhớ khai giá model này trong Bảng giá bổ sung."),
     ConfigField("local_llm_url", "Địa chỉ Ollama (trò chạy trên máy)", "agents", "text", placeholder="http://localhost:11434",
@@ -89,6 +92,12 @@ FIELDS: list[ConfigField] = [
     ConfigField("agent_master_rate", "Bậc thầy: tỷ lệ đạt (0.95 = 95%)", "agents", "float"),
     ConfigField("agent_master_audit_rate", "Bậc thầy: tỷ lệ việc vẫn gửi thầy kiểm tra", "agents", "float",
                 help="0 = phòng đạt Bậc thầy tự làm hoàn toàn, chỉ nhờ thầy khi bài của trò không qua QA."),
+    ConfigField("full_auto", "Bật Tự động hoàn toàn", "auto", "bool",
+                help="Tự quét tin, tự chọn tin, tự làm video, tự sửa lỗi (không được thì bỏ tin), tự tải lên và tự công khai sau "
+                     "thời gian chờ nếu bạn không bấm Dừng trên Telegram. Luôn trong trần ngân sách AI."),
+    ConfigField("auto_publish_delay_minutes", "Tự công khai sau (phút) — 0 = không tự công khai", "auto", "int",
+                help="Video tải lên RIÊNG TƯ, Telegram báo kèm nút Dừng; hết thời gian này mà không bị Dừng thì app công khai."),
+    ConfigField("auto_heal_max_attempts", "Số lần tự chạy lại video lỗi trước khi bỏ", "auto", "int"),
     ConfigField("kpi_monthly_revenue_usd", "KPI doanh thu quảng cáo mỗi tháng (USD)", "growth", "float",
                 help="Doanh thu quảng cáo YouTube ước tính (estimatedAdRevenue). 0 = chưa đặt KPI. Ban Tăng trưởng "
                      "đối chiếu mỗi ngày và tự chỉnh kế hoạch sản xuất để bám KPI."),
@@ -143,6 +152,23 @@ FIELDS: list[ConfigField] = [
     ConfigField("score_autopilot", "Ngưỡng điểm Autopilot", "editorial", "int"),
     ConfigField("max_videos_per_week", "Tối đa video/tuần (Autopilot)", "editorial", "int"),
     ConfigField("scan_interval_hours", "Chu kỳ quét tin (giờ)", "editorial", "float", restart=True),
+    ConfigField("channel_brand", "Chữ logo góc màn hình (trống = tên kênh)", "render", "text"),
+    ConfigField("music_volume_db", "Âm lượng nhạc nền (dB, ví dụ -20)", "render", "float",
+                help="Nhạc lấy từ media_library/music (mỗi file kèm .license.json, ví dụ nhạc tải từ YouTube Audio Library). "
+                     "Tự giảm thêm khi có giọng đọc."),
+    ConfigField("ai_image_provider", "Nguồn ảnh AI", "ai_images", "select", ("auto", "cloudflare", "fal", "off"),
+                "auto: Cloudflare Workers AI (miễn phí ~150 ảnh/ngày) trước, hết hạn mức hoặc thiếu key thì dùng fal.ai "
+                "(~0,003 USD/ảnh, tính vào trần ngân sách AI). Ảnh AI chỉ lấp cảnh không có video/ảnh thật phù hợp."),
+    ConfigField("ai_images_per_video", "Số ảnh AI tối đa mỗi video", "ai_images", "int"),
+    ConfigField("cloudflare_account_id", "Cloudflare Account ID", "ai_images", "text",
+                help="dash.cloudflare.com → chọn tài khoản → Account ID ở trang tổng quan."),
+    ConfigField("cloudflare_api_token", "Cloudflare API token (quyền Workers AI)", "ai_images", "secret",
+                help="My Profile → API Tokens → Create Token → mẫu 'Workers AI'."),
+    ConfigField("cloudflare_daily_images", "Cloudflare: số ảnh tối đa/ngày (giữ trong mức miễn phí)", "ai_images", "int"),
+    ConfigField("fal_api_key", "fal.ai API key", "ai_images", "secret", help="fal.ai/dashboard/keys. Dịch vụ trả phí, nạp trước."),
+    ConfigField("fal_model", "fal.ai model", "ai_images", "text", placeholder="fal-ai/flux-1/schnell"),
+    ConfigField("fal_price_per_image", "fal.ai: giá mỗi ảnh (USD) để Ban Tài chính tính", "ai_images", "float"),
+    ConfigField("stock_max_queries", "Số từ khoá tìm tư liệu tối đa mỗi video", "media", "int"),
     ConfigField("render_preset", "FFmpeg preset", "render", "select", ("ultrafast", "superfast", "veryfast", "faster", "fast", "medium")),
     ConfigField("render_burn_subtitles", "Gắn cứng phụ đề vào video", "render", "bool"),
     ConfigField("job_concurrency", "Số job chạy song song", "render", "int", restart=True),
@@ -254,6 +280,12 @@ def save(session, values: dict[str, Any], clear: list[str], actor: str) -> SaveR
         raise ValueError("Thời lượng tối thiểu phải nhỏ hơn tối đa")
     if not merged.get("duration_min_seconds", 0) <= merged.get("duration_target_seconds", 0) <= merged.get("duration_max_seconds", 0):
         raise ValueError("Thời lượng mục tiêu phải nằm giữa tối thiểu và tối đa")
+    if not 0 <= int(merged.get("auto_publish_delay_minutes", 120)) <= 7 * 24 * 60:
+        raise ValueError("Thời gian chờ tự công khai phải trong khoảng 0–10080 phút")
+    if merged.get("full_auto") and 0 < int(merged.get("auto_publish_delay_minutes", 120)) < 15:
+        raise ValueError("Thời gian chờ tự công khai tối thiểu 15 phút để bạn kịp bấm Dừng")
+    if not 0 <= int(merged.get("auto_heal_max_attempts", 2)) <= 10:
+        raise ValueError("Số lần tự chạy lại phải trong khoảng 0–10")
     if not 0 <= float(merged.get("kpi_monthly_revenue_usd", 0)) <= 10_000_000:
         raise ValueError("KPI doanh thu tháng phải là số USD không âm")
     if not 1 <= int(merged.get("growth_max_stories_per_day", 6)) <= 24:

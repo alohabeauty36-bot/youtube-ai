@@ -32,7 +32,8 @@ def _filter_log(path: Path, vf: str | None = None, af: str | None = None) -> str
 
 def run_media_qa(video: Path, *, exact_10min: bool, dur_min: float, dur_max: float, assets: list[dict],
                  on_screen_facts_ok: bool, description: str, sources: list[dict], thumbnail: Path | None,
-                 subtitle: Path | None, music_present: bool = False, hard_min_seconds: float = 600.0) -> dict:
+                 subtitle: Path | None, music_present: bool = False, hard_min_seconds: float = 600.0,
+                 music_db: float = -20.0) -> dict:
     checks: list[dict] = []
 
     def add(name, ok, detail=""):
@@ -43,7 +44,10 @@ def run_media_qa(video: Path, *, exact_10min: bool, dur_min: float, dur_max: flo
     a = next((s for s in info.get("streams", []) if s.get("codec_type") == "audio"), {})
     add("Video H.264 yuv420p", v.get("codec_name") == "h264" and v.get("pix_fmt") == "yuv420p",
         f"{v.get('codec_name')} {v.get('pix_fmt')}")
-    add("Độ phân giải 1920×1080 (16:9)", (v.get("width"), v.get("height")) == (1920, 1080), f"{v.get('width')}×{v.get('height')}")
+    dar = v.get("display_aspect_ratio")
+    add("Độ phân giải 1920×1080 (16:9)", (v.get("width"), v.get("height")) == (1920, 1080) and dar in (None, "16:9")
+        and v.get("sample_aspect_ratio") in (None, "1:1"),
+        f"{v.get('width')}×{v.get('height')} DAR {dar or '?'} SAR {v.get('sample_aspect_ratio') or '?'}")
     fr = v.get("r_frame_rate", "0/1").split("/")
     fps = float(fr[0]) / float(fr[1] or 1) if len(fr) == 2 else 0
     add("30 fps", abs(fps - 30) < 0.01, f"{fps:.2f}")
@@ -66,8 +70,8 @@ def run_media_qa(video: Path, *, exact_10min: bool, dur_min: float, dur_max: flo
     mean = re.search(r"mean_volume: (-?[\d.]+) dB", log)
     mxv = float(mx.group(1)) if mx else 0.0
     add("Audio không clipping (max < -0.3 dB)", mx is not None and mxv < -0.3, f"max {mxv} dB, mean {mean.group(1) if mean else '?'} dB")
-    add("Nhạc không át giọng", True if not music_present else False,
-        "Không có nhạc nền trong MVP" if not music_present else "Cần kiểm tra thủ công mức nhạc")
+    add("Nhạc không át giọng", (not music_present) or music_db <= -14,
+        "Không có nhạc nền" if not music_present else f"Nhạc nền {music_db:.0f} dB, tự giảm thêm khi có giọng (sidechain)")
     unlicensed = [x["id"] for x in assets if x.get("review_status") != "approved"]
     add("Mọi asset đã qua license gate", not unlicensed, ", ".join(unlicensed))
     missing_src = [s["url"] for s in sources if s["url"] not in description]

@@ -1,9 +1,9 @@
 # EV Creator Studio
 
 Tòa soạn video AI **có người duyệt cuối** cho kênh YouTube tiếng Việt về VinFast và xe điện (ba trụ cột P1, P2, P3).
-Quy trình: quét tin hợp lệ → gom nguồn, tách claim, xác minh → chấm điểm → Claude viết ResearchPack và kịch bản **ít nhất 10 phút** (mục tiêu 11 phút) → VieNeu-TTS đọc (đo thời lượng bằng audio thật) → tư liệu có giấy phép hoặc đồ họa tự dựng → FFmpeg 1080p, phụ đề, thumbnail, SEO → **tải lên YouTube ở chế độ RIÊNG TƯ** → đọc lại để xác nhận private → nhắn Telegram → **chủ kênh tự công khai trên YouTube Studio**.
+Quy trình: quét tin hợp lệ → gom nguồn, tách claim, xác minh → chấm điểm → Claude viết ResearchPack và kịch bản **ít nhất 10 phút** (mục tiêu 11 phút) → VieNeu-TTS đọc (đo thời lượng bằng audio thật) → tư liệu có giấy phép hoặc đồ họa tự dựng → FFmpeg 1080p, phụ đề, thumbnail, SEO → **tải lên YouTube ở chế độ RIÊNG TƯ** → đọc lại để xác nhận private → nhắn Telegram → **chủ kênh tự công khai trên YouTube Studio**, hoặc app tự công khai sau thời gian chờ nếu bật Tự động hoàn toàn.
 
-> 🔒 **Các bất biến không tắt được:** mọi upload dùng `privacyStatus="private"`, bị kiểm tra ba lớp (hàm tạo body, client ngay trước khi gọi API, ràng buộc CHECK trong DB) và được đọc lại bằng `videos.list`. Ứng dụng không có endpoint, nút hay job nào để công khai video. Bấm "Đã kiểm duyệt" (trên dashboard hoặc Telegram) chỉ đổi trạng thái trong DB thành `APPROVED_PRIVATE`.
+> 🔒 **Quyền riêng tư:** mọi upload dùng `privacyStatus="private"`, bị kiểm tra ba lớp (hàm tạo body, client ngay trước khi gọi API, ràng buộc CHECK trong DB) và được đọc lại bằng `videos.list`. Mặc định app **không bao giờ** công khai video: bấm "Đã kiểm duyệt" chỉ đổi trạng thái trong DB thành `APPROVED_PRIVATE`. Ngoại lệ duy nhất là chế độ **Tự động hoàn toàn** do chủ kênh tự bật (mục 3c): video được công khai sau thời gian chờ (mặc định 2 giờ), chỉ khi đã báo Telegram kèm nút **⛔ Dừng tự công khai**, chủ kênh không bấm Dừng, và kiểm chứng lại ngay trước đó vẫn đạt. Toàn bộ việc công khai nằm ở `services/youtube/publish.py`.
 
 Đặc tả gốc: [`docs/EV_CREATOR_STUDIO_MASTER_ALL_IN_ONE.md`](docs/EV_CREATOR_STUDIO_MASTER_ALL_IN_ONE.md). Kế hoạch: [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md). Bảng nghiệm thu: [`ACCEPTANCE.md`](ACCEPTANCE.md).
 
@@ -61,7 +61,7 @@ Giữ nguyên: cấu hình và key đã nhập, **sổ cái ngân sách** (tiề
 
 **Truy cập:** khi mở trên chính máy chạy ứng dụng (127.0.0.1), bạn không cần mật khẩu. Khi truy cập từ máy khác, ứng dụng yêu cầu mật khẩu chủ kênh hoặc biên tập viên. Nếu ứng dụng nằm sau reverse proxy, các request có header proxy **không** được tin là truy cập cục bộ.
 
-**Dành cho lập trình viên:** `make test` chạy 160 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8010.
+**Dành cho lập trình viên:** `make test` chạy 180 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8010.
 
 ### Windows 11
 Nên dùng WSL2 (Ubuntu) với Docker Desktop. Cách native cũng chạy được với Python 3.12, FFmpeg (gyan.dev, có libass) và `pip install vieneu` (CPU/ONNX). GPU CUDA trên Windows cần cài `torch==2.8.0` cu128 trước, theo README của VieNeu.
@@ -69,6 +69,24 @@ Nên dùng WSL2 (Ubuntu) với Docker Desktop. Cách native cũng chạy đượ
 ## 3. Hai chế độ
 - **MANUAL:** chủ kênh chọn tin ở trang Săn tin. Pipeline dừng ở *Bản nháp kịch bản* để chờ duyệt, rồi dừng ở *Sẵn sàng tải RIÊNG TƯ* để chờ chủ kênh tick xác nhận và bấm upload.
 - **AUTOPILOT_PRIVATE** (bật trong Settings): tự chọn tin có điểm ≥ 80/100, mọi claim trọng yếu đã xác minh, tối đa 3 tin/ngày và chỉ khi Ban Tài chính còn đủ ngân sách. Pipeline chạy đến upload RIÊNG TƯ và Telegram, nhưng **dừng và chuyển sang `NEEDS_REVIEW`** nếu thiếu nguồn, claim đang tranh cãi, sai thời lượng (dưới 10 phút hoặc quá dài) sau 3 lần viết lại, QA không đạt, sai kênh, hoặc thiếu credential (`BLOCKED_BY_CREDENTIALS`).
+
+## 3c. Tự động hoàn toàn
+Một công tắc trên **Bảng điều khiển** (hoặc Thiết lập → Tự động hoàn toàn). Khi bật, mỗi 10 phút app tự làm:
+- **Quét tin và Autopilot**: lịch quét và Autopilot được coi là đang bật. Thiếu tin ≥ 80 điểm thì lấy tin trong shortlist (≥ 75 điểm), vẫn bắt buộc có claim trọng yếu đã xác minh. Số video/ngày theo Ban Tăng trưởng, luôn trong trần ngân sách AI.
+- **Tự sửa lỗi**: video bị dừng (`NEEDS_REVIEW`, `FAILED_*`) được chạy lại tối đa `auto_heal_max_attempts` lần (mặc định 2; kịch bản trượt QA thì viết bản mới). Vẫn hỏng → **bỏ tin đó** (`REJECTED`, ghi lý do) để Autopilot chọn tin khác. Không đụng video dừng vì hết ngân sách (đợi sang ngày mới) hoặc thiếu key/OAuth (chủ kênh phải sửa).
+- **Tự công khai có hẹn giờ** (`auto_publish_delay_minutes`, mặc định 120; 0 = không tự công khai): tin nhắn Telegram ghi giờ công khai và có nút **⛔ Dừng tự công khai**. Ngay trước giờ hẹn, app kiểm chứng lại claim và hạn hiệu lực, kiểm tra Media QA, độ dài ≥ 10 phút, đã báo Telegram. Không đạt → giữ riêng tư và nhắn lý do. Đạt → `videos.update` sang public, đọc lại, chuyển `PUBLISHED_AUTO`, nhắn link.
+- **Cần quyền mới**: `youtube.force-ssl` (đổi trạng thái video). Bấm **Kết nối kênh YouTube** lại sau khi cập nhật.
+
+⚠️ **Project Google Cloud chưa qua audit YouTube API**: video tải lên qua API bị YouTube khoá riêng tư; app sẽ báo "YouTube giữ video ở chế độ RIÊNG TƯ" và nhắn Telegram. Làm theo [`docs/youtube-api-audit.md`](docs/youtube-api-audit.md): bật GitHub Pages (trang chủ + chính sách quyền riêng tư có sẵn trong `docs/`), Publish app OAuth (hết phải kết nối lại mỗi 7 ngày), rồi nộp đơn audit.
+
+## 3d. Hình ảnh video
+- **Phòng Đạo diễn hình ảnh** (Claude Haiku, ~0,002–0,005 USD/video; không có Claude thì dùng từ điển chủ đề xe điện) lên danh sách cảnh quay: mỗi cảnh 3–9 giây có một từ khoá tiếng Anh để tìm tư liệu, một câu chữ nhấn mạnh, và loại cảnh (video nền / chữ nhấn / câu hỏi / số liệu). Số liệu trên màn hình **chỉ lấy từ claim đã xác minh** (trường value/unit), không để AI tự viết số.
+- **Tư liệu theo từng cảnh**: Pexels **Video** (B-roll) trước, rồi ảnh Pexels, Wikimedia Commons, thư viện của chủ kênh (`media_library/`, ảnh hoặc video kèm `.license.json`). Mọi tư liệu qua license gate. Clip tải về lưu ở `artifacts/_stock_cache/` để video sau dùng lại. **Cần Pexels API key** (miễn phí tại pexels.com/api) ở Thiết lập → Kho tư liệu; thiếu key thì chỉ có thư viện chủ kênh và nền đồ họa.
+- **Dựng nhiều lớp**: nền luôn chuyển động (video B-roll, ảnh có Ken Burns 4 hướng, hoặc nền đồ họa có Ken Burns), lớp chữ trượt vào (chữ nhấn góc trên, thẻ dữ kiện có nguồn, số liệu cỡ lớn, câu hỏi), logo kênh góc trên phải, dải tối dưới đáy để phụ đề luôn rõ. Cùng một tư liệu không lặp ở cảnh liền kề.
+- **Ảnh minh họa AI** (FLUX.1 schnell): chỉ lấp những từ khoá mà kho tư liệu không có video/ảnh thật, tối đa `ai_images_per_video` (mặc định 12) ảnh/video. Nguồn `auto`: **Cloudflare Workers AI** trước (miễn phí trong hạn mức 10.000 neurons/ngày; app dừng ở `cloudflare_daily_images` = 150 ảnh/ngày), hết lượt hoặc thiếu key thì **fal.ai** (~0,003 USD/ảnh, mỗi ảnh được Ban Tài chính giữ chỗ trong trần ngân sách). Prompt bỏ tên thương hiệu/mẫu xe/số, yêu cầu không chữ, không logo, không biển số, không khuôn mặt nhận ra được; ảnh được đánh dấu AI, góc màn hình ghi "Ảnh minh họa AI", mô tả video ghi công. Cấu hình ở Thiết lập → Ảnh AI minh họa (nút Kiểm tra tạo thử 1 ảnh). Ảnh đã tạo lưu ở `artifacts/_ai_cache/` để dùng lại.
+- **Nhạc nền**: đặt file nhạc vào `media_library/music/` kèm `<tên file>.license.json`, ví dụ nhạc tải từ YouTube Studio → Thư viện âm thanh: `{"license_name": "YouTube Audio Library", "allowed_commercial": true, "source_url": "…", "attribution_text": "Tên bài — Tác giả"}`. Nhạc ở mức `music_volume_db` (mặc định -20 dB) và tự giảm thêm khi có giọng đọc; ghi công tự thêm vào mô tả video.
+- **Luôn 16:9**: video 1920×1080 (Media QA kiểm tra cả DAR 16:9 và SAR 1:1), thumbnail 1280×720, ảnh AI đưa về 1920×1080. Tư liệu dọc hoặc vuông (rộng/cao < 1,3) không được dùng làm nền vì cắt sang 16:9 sẽ mất chủ thể; Wikimedia chỉ lấy ảnh ngang.
+- Trang **Tư liệu & cảnh** hiện từng cảnh (ảnh xem trước có lớp chữ), loại cảnh, video hay ảnh, và từ khoá đã tìm.
 
 ## 3b. Ngân sách AI và bộ não phòng ban
 
@@ -79,7 +97,7 @@ Mặc định **50 USD/tháng** cho Claude + ChatGPT (chỉnh ở **Thiết lậ
 |---|---|---|
 | Tháng | 50 USD, giữ lại 5% phòng sai số → chi tối đa 47,5 USD | cứng |
 | Ngày | phần còn lại của tháng ÷ số ngày còn lại, **không quá 2× bình quân** (~3,2 USD) | chống một ngày tiêu quá tay |
-| Phòng ban | Săn tin 14%, Nghiên cứu 22%, Biên kịch 43%, Biên tập 6%, Bài luận 10%, Đào tạo 3%, Tăng trưởng 2% | một phòng không ăn hết phần của phòng khác |
+| Phòng ban | Săn tin 14%, Nghiên cứu 22%, Biên kịch 35%, Biên tập 6%, Bài luận 10%, Đào tạo 3%, Tăng trưởng 2%, Đạo diễn hình ảnh 8% (gồm ảnh fal.ai) | một phòng không ăn hết phần của phòng khác |
 | Mỗi video | 0,75 USD (đủ cho ResearchPack + kịch bản + 3 lần viết lại) | |
 | Số tin | Autopilot tối đa **3 tin/ngày**, chỉ mở tin mới khi còn đủ tiền cho một video | |
 
@@ -153,7 +171,7 @@ prompts/pillars/P1|P2|P3.md       hồ sơ trụ cột
 prompts/reference/…               Mục IV nguyên văn (tham khảo văn phong)
 frontend/                         Next.js 15 + TypeScript (xuất tĩnh → backend/ev_studio/web_dist, backend phục vụ)
 migrations/                       Alembic
-tests/                            160 test
+tests/                            180 test
 run.py, start.bat, start.sh       chạy bằng một lệnh
 backend/ev_studio/runtime_config.py  cấu hình API lưu mã hoá trong DB
 backend/ev_studio/agents/            Ban Tài chính (budget, pricing) + bộ não phòng ban (brain, memory, teachers, learning, writer) + Ban Tăng trưởng (growth)
@@ -162,7 +180,7 @@ backend/ev_studio/error_log.py       Nhật ký lỗi: WARNING+ của ev_studio.
 
 **Ba loại duyệt được tách riêng:**
 - (a) Xác minh tin và claim: chặn ngay từ khâu sản xuất.
-- (b) Media QA (15 kiểm tra: codec, 1080p, 30fps, AAC 48k, thời lượng, không dưới 10 phút, đen hình, đứng hình, clipping, giấy phép, nguồn, thumbnail, font, SHA-256…): chặn upload.
+- (b) Media QA (15 kiểm tra, gồm mức nhạc nền: codec, 1080p, 30fps, AAC 48k, thời lượng, không dưới 10 phút, đen hình, đứng hình, clipping, giấy phép, nguồn, thumbnail, font, SHA-256…): chặn upload.
 - (c) Chủ kênh duyệt video cuối trên Telegram hoặc dashboard: **không** kích hoạt công khai.
 
 ## 5. Vận hành

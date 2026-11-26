@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chính sách quyền riêng tư — EV Creator Studio</title>
+<style>
+  body { font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; max-width: 760px; margin: 40px auto; padding: 0 20px; color: #1b1f24; }
+  h1 { font-size: 26px } h2 { font-size: 19px; margin-top: 28px } a { color: #0b62c4 } .muted { color: #5b6470 }
+  hr { margin: 40px 0; border: 0; border-top: 1px solid #d6dbe1 }
+</style>
+</head>
+<body>
+<h1>Chính sách quyền riêng tư — EV Creator Studio</h1>
+<p class="muted">Cập nhật: 26/11/2026 (bổ sung kho tư liệu và ảnh minh họa AI)</p>
+
+<p>EV Creator Studio ("công cụ") là phần mềm do chủ kênh YouTube <b>Vựa Tin 365</b> tự chạy trên máy tính của mình. Công cụ chỉ
+truy cập tài khoản YouTube của chính chủ kênh, sau khi chủ kênh đồng ý qua màn hình cấp quyền OAuth của Google.</p>
+
+<h2>Công cụ sử dụng YouTube API Services</h2>
+<p>Khi dùng công cụ, bạn đồng ý với <a href="https://www.youtube.com/t/terms">Điều khoản dịch vụ YouTube</a>.
+Dữ liệu Google được xử lý theo <a href="https://policies.google.com/privacy">Chính sách quyền riêng tư của Google</a>.</p>
+
+<h2>Dữ liệu công cụ truy cập</h2>
+<ul>
+  <li><b>Thông tin kênh và video</b> (YouTube Data API): ID và tên kênh, trạng thái quyền riêng tư của video do công cụ tải lên.</li>
+  <li><b>Số liệu kênh</b> (YouTube Analytics API): lượt xem, thời gian xem, người đăng ký, doanh thu quảng cáo ước tính, theo ngày và theo video.</li>
+  <li><b>Quyền tải lên và quản lý video</b>: chỉ dùng cho video do công cụ dựng, để tải lên ở chế độ riêng tư và (khi chủ kênh bật chế độ tự động) chuyển sang công khai.</li>
+</ul>
+
+<h2>Cách lưu trữ và sử dụng</h2>
+<ul>
+  <li>Token OAuth được mã hoá và chỉ lưu trong cơ sở dữ liệu trên máy của chủ kênh. Không có máy chủ trung tâm nào nhận dữ liệu này.</li>
+  <li>Số liệu kênh được lưu trên máy của chủ kênh để tính tiến độ mục tiêu doanh thu và lập kế hoạch nội dung.</li>
+  <li>Số liệu tổng hợp của kênh (không có dữ liệu cá nhân của người xem) có thể được gửi tới Anthropic (Claude API) để viết bản ghi nhớ chiến lược nội dung. Văn bản tin tức công khai được gửi tới Claude để viết kịch bản.</li>
+  <li>Thông báo trạng thái video được gửi tới tài khoản Telegram của chủ kênh.</li>
+  <li>Từ khoá tìm tư liệu bằng tiếng Anh (ví dụ "ev charging station") được gửi tới Pexels và Wikimedia Commons; mô tả ảnh minh họa bằng tiếng Anh được gửi tới Cloudflare Workers AI hoặc fal.ai để tạo ảnh. Các nội dung này không chứa dữ liệu kênh hay dữ liệu cá nhân.</li>
+  <li>Công cụ không bán, không chia sẻ dữ liệu cho bên thứ ba nào khác, không dùng dữ liệu để quảng cáo, và không truy cập dữ liệu cá nhân của người xem.</li>
+</ul>
+
+<h2>Thu hồi quyền và xoá dữ liệu</h2>
+<p>Bạn có thể thu hồi quyền truy cập của công cụ bất cứ lúc nào tại
+<a href="https://security.google.com/settings/security/permissions">trang quyền bảo mật của Google</a>.
+Xoá thư mục dữ liệu (<code>data/</code>) của công cụ trên máy sẽ xoá toàn bộ token và số liệu đã lưu. Số liệu Analytics được làm mới
+hằng ngày; số liệu theo ngày chỉ giữ tối đa 90 ngày.</p>
+
+<h2>Liên hệ</h2>
+<p>Gửi câu hỏi qua <a href="https://github.com/alohabeauty36-bot/youtube-ai/issues">trang Issues của dự án</a>.</p>
+
+<hr>
+
+<h1>Privacy Policy — EV Creator Studio</h1>
+<p class="muted">Last updated: November 26, 2026</p>
+
+<p>EV Creator Studio (the "tool") is self-hosted software run by the owner of the YouTube channel <b>Vựa Tin 365</b> on their
+own computer. It only accesses the channel owner's own YouTube account, after the owner grants consent through Google's OAuth screen.</p>
+
+<h2>Use of YouTube API Services</h2>
+<p>This tool uses YouTube API Services. By using it you agree to the <a href="https://www.youtube.com/t/terms">YouTube Terms of Service</a>.
+Google data is handled under the <a href="https://policies.google.com/privacy">Google Privacy Policy</a>.</p>
+
+<h2>Data accessed</h2>
+<ul>
+  <li><b>Channel and video information</b> (YouTube Data API): channel ID and title; privacy status of videos uploaded by the tool.</li>
+  <li><b>Channel metrics</b> (YouTube Analytics API): views, watch time, subscribers and estimated ad revenue, per day and per video.</li>
+  <li><b>Upload and video management</b>: used only for videos produced by the tool — to upload them as private and, when the owner enables full automation, to switch them to public.</li>
+</ul>
+
+<h2>How data is stored and used</h2>
+<ul>
+  <li>OAuth tokens are encrypted and stored only in the database on the owner's computer. No central server receives them.</li>
+  <li>Channel metrics are stored on the owner's computer to track the monthly revenue goal and plan content.</li>
+  <li>Aggregated channel metrics (no personal data about viewers) may be sent to Anthropic (Claude API) to write a content-strategy memo. Public news text is sent to Claude to write scripts.</li>
+  <li>Video status notifications are sent to the owner's own Telegram account.</li>
+  <li>English stock-search keywords (e.g. "ev charging station") are sent to Pexels and Wikimedia Commons; English illustration prompts are sent to Cloudflare Workers AI or fal.ai to generate images. These contain no channel data or personal data.</li>
+  <li>The tool does not sell or share data with any other third party, does not use it for advertising, and does not access viewers' personal data.</li>
+</ul>
+
+<h2>Revoking access and deleting data</h2>
+<p>You can revoke the tool's access at any time via <a href="https://security.google.com/settings/security/permissions">Google security settings</a>.
+Deleting the tool's <code>data/</code> folder removes all stored tokens and metrics. Analytics data is refreshed daily and daily
+metrics are kept for at most 90 days.</p>
+
+<h2>Contact</h2>
+<p>Questions: <a href="https://github.com/alohabeauty36-bot/youtube-ai/issues">project Issues page</a>.</p>
+</body>
+</html>

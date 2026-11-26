@@ -1,4 +1,5 @@
-"""Storyboard tự động từ audio timeline: cảnh 4–12 giây, mỗi cảnh có asset_id hoặc đồ họa nội bộ."""
+"""Storyboard tự động từ audio timeline: cảnh 3–9 giây (nhịp cắt cảnh của video tin tức), mỗi cảnh có nền chuyển động
+(video B-roll / ảnh hợp quyền / đồ họa nội bộ) và lớp chữ phủ theo kế hoạch của Phòng Đạo diễn hình ảnh."""
 from __future__ import annotations
 
 import math
@@ -7,7 +8,8 @@ from dataclasses import dataclass, field
 
 from .ranker import strip_accents
 
-MIN_S, TARGET_S, MAX_S = 4.0, 7.5, 12.0
+MIN_S, TARGET_S, MAX_S = 3.0, 5.5, 9.0
+SPLIT_S = 7.0  # cảnh dài hơn MAX_S được chia thành các đoạn ≤ 7 giây
 
 
 @dataclass
@@ -48,7 +50,7 @@ def group_segments(segments: list[dict], total: float) -> list[SceneSpec]:
     for sc in scenes:
         d = sc.end - sc.start
         if d > MAX_S:
-            n = math.ceil(d / 10.0)
+            n = math.ceil(d / SPLIT_S)
             step = d / n
             for k in range(n):
                 part = SceneSpec(0, sc.start + k * step, sc.start + (k + 1) * step, sc.segment_keys, sc.text)
@@ -129,3 +131,53 @@ def assign_visuals(scenes: list[SceneSpec], *, claim_map: list[dict], claims: di
     if len(scenes) > 2:
         scenes[-1].visual_type = "credits"
     return scenes
+
+
+# ------------------------------------------------------------------ nền + lớp phủ theo kế hoạch cảnh quay
+
+MAX_USES = {"video": 3, "image": 2}
+NO_REPEAT_WINDOW = 5  # cùng một tư liệu không xuất hiện lại trong 5 cảnh liền
+
+
+def special_kind(sc: SceneSpec, *, excerpt_to_claim: list[tuple[str, str]], claims: dict[str, dict], used: dict,
+                 has_timeline: bool) -> tuple[str | None, str | None]:
+    """Cảnh đồ họa dữ kiện có sẵn (ưu tiên hơn kế hoạch): thẻ dữ kiện/số liệu theo claim, phép tính, timeline, lợi ích/rủi ro."""
+    t = strip_accents(sc.text)
+    claim = next((cid for ex, cid in excerpt_to_claim if ex and ex[:50] in t and cid not in used["claims"]), None)
+    if claim and claim in claims:
+        used["claims"].add(claim)
+        c = claims[claim]
+        return ("stat" if c.get("value") and re.search(r"\d", str(c["value"])) else "fact"), claim
+    if "phep tinh vi du" in t and not used["formula"]:
+        used["formula"] = True
+        return "formula", None
+    if has_timeline and not used["timeline"] and ("ba moc" in t or "thoi han" in t or "ngay ket thuc" in t):
+        used["timeline"] = True
+        return "timeline", None
+    if not used["pros_cons"] and ("phe ung ho" in t or "kich ban" in t):
+        used["pros_cons"] = True
+        return "pros_cons", None
+    return None, None
+
+
+def pick_background(idx: int, query: str | None, assets: list[dict], by_query: dict[str, list[str]], uses: dict[str, int],
+                    last_seen: dict[str, int]) -> dict | None:
+    """Chọn tư liệu cho cảnh: đúng từ khoá trước, rồi tư liệu ít dùng nhất; không lặp trong NO_REPEAT_WINDOW cảnh."""
+    by_id = {a["id"]: a for a in assets}
+
+    def ok(a):
+        return uses.get(a["id"], 0) < MAX_USES.get(a["media_type"], 2) and idx - last_seen.get(a["id"], -99) > NO_REPEAT_WINDOW
+
+    cands = [by_id[i] for i in by_query.get(query or "", []) if i in by_id and ok(by_id[i])]
+    if not cands:
+        cands = [a for a in assets if ok(a)]
+    if not cands:  # thiếu tư liệu: cho dùng lại (đoạn khác của clip), vẫn tránh lặp trong cửa sổ cảnh liền nhau
+        cands = [a for a in assets if idx - last_seen.get(a["id"], -99) > min(NO_REPEAT_WINDOW, max(1, len(assets) - 1))]
+    if not cands:
+        cands = [a for a in assets if last_seen.get(a["id"], -99) != idx - 1]
+    if not cands:
+        return None
+    a = min(cands, key=lambda a: (uses.get(a["id"], 0), a["media_type"] != "video"))
+    uses[a["id"]] = uses.get(a["id"], 0) + 1
+    last_seen[a["id"]] = idx
+    return a

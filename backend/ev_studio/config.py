@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     model_research: str = "claude-sonnet-5-5"
     model_script: str = ""  # để trống = dùng anthropic_model
     model_editor: str = "claude-haiku-5-5"
+    model_director: str = "claude-haiku-5-5"  # Phòng Đạo diễn hình ảnh: danh sách cảnh quay
     openai_api_key: SecretStr | None = None
     openai_model: str = ""
     openai_base_url: str = "https://api.openai.com/v1"
@@ -77,6 +78,11 @@ class Settings(BaseSettings):
     agent_master_min_passes: int = 40
     agent_master_rate: float = 0.95
     agent_master_audit_rate: float = 0.0
+
+    # --- Tự động hoàn toàn: một công tắc cho Autopilot + lịch quét + tự sửa lỗi + tự công khai có hẹn giờ ---
+    full_auto: bool = False
+    auto_publish_delay_minutes: int = 120  # 0 = không tự công khai (vẫn giữ riêng tư như cũ)
+    auto_heal_max_attempts: int = 2  # tự chạy lại video lỗi tối đa N lần, vẫn hỏng thì bỏ tin đó
 
     # --- Ban Tăng trưởng: theo dõi kênh bằng YouTube Analytics, chạy theo KPI doanh thu tháng ---
     kpi_monthly_revenue_usd: float = 0.0  # 0 = chưa đặt KPI. Doanh thu quảng cáo YouTube (estimatedAdRevenue), USD
@@ -140,6 +146,23 @@ class Settings(BaseSettings):
     max_videos_per_week: int = 21
     scan_interval_hours: float = 3
     freshness_max_age_hours: float = 24
+
+    # --- hình ảnh video ---
+    stock_max_queries: int = 30  # tối đa số từ khoá tìm tư liệu cho một video (Pexels: 200 lượt/giờ)
+    music_volume_db: float = -20.0  # nhạc nền (thư viện chủ kênh media_library/music), tự giảm thêm khi có giọng đọc
+    channel_brand: str = ""  # chữ logo góc màn hình; trống = tên kênh YouTube
+
+    # --- ảnh minh họa AI (FLUX.1 schnell): lấp cảnh kho tư liệu không có hình phù hợp ---
+    ai_image_provider: Literal["auto", "cloudflare", "fal", "off"] = "auto"  # auto: Cloudflare (miễn phí) trước, rồi fal.ai
+    ai_images_per_video: int = 12
+    cloudflare_account_id: str = ""
+    cloudflare_api_token: SecretStr | None = None
+    cloudflare_image_model: str = "@cf/black-forest-labs/flux-1-schnell"
+    cloudflare_daily_images: int = 150  # ~57 neurons/ảnh → 150 ảnh ≈ 8.600 neurons, dưới 10.000 neurons miễn phí/ngày
+    fal_api_key: SecretStr | None = None
+    fal_model: str = "fal-ai/flux-1/schnell"
+    fal_image_size: str = "landscape_16_9"
+    fal_price_per_image: float = 0.003  # USD; Ban Tài chính giữ chỗ trước mỗi ảnh
 
     # --- render ---
     render_preset: str = "veryfast"

@@ -150,4 +150,30 @@ def test_youtube(s: Settings) -> dict:
                client_id=cfg["client_id"][:12] + "…")
 
 
-TESTS = {"anthropic": test_anthropic, "telegram": test_telegram, "pexels": test_pexels, "tts": test_tts, "youtube": test_youtube}
+def test_ai_images(s: Settings, generators: dict | None = None) -> dict:
+    """Tạo thử 1 ảnh qua từng nguồn đã cấu hình (fal.ai: tốn ~0,003 USD)."""
+    import base64
+    import io
+
+    from PIL import Image
+
+    from .media.ai_images import build_prompt, generator_for, providers_in_order
+
+    order = list(generators) if generators else providers_in_order(s)
+    if not order:
+        return _fail("Chưa cấu hình nguồn ảnh AI: nhập Cloudflare Account ID + API token, hoặc fal.ai API key.")
+    results = []
+    for p in order:
+        try:
+            g = (generators or {}).get(p) or generator_for(s, p)
+            raw = g.generate(build_prompt("electric car charging station at dusk"), seed=7)
+            im = Image.open(io.BytesIO(raw))
+            results.append({"provider": p, "ok": True, "size": f"{im.width}×{im.height}"})
+        except Exception as e:  # noqa: BLE001
+            results.append({"provider": p, "ok": False, "error": redact(str(e))[:200]})
+    good = [r for r in results if r["ok"]]
+    msg = "; ".join(f"{r['provider']}: " + (f"tạo được ảnh {r['size']}" if r["ok"] else r["error"]) for r in results)
+    return (_ok if good else _fail)(msg, providers=results)
+
+
+TESTS = {"ai_images": test_ai_images, "anthropic": test_anthropic, "telegram": test_telegram, "pexels": test_pexels, "tts": test_tts, "youtube": test_youtube}

@@ -10,6 +10,8 @@ ALLOWED_LICENSES = {
     "cc by 2.0", "cc by 2.5", "cc by 3.0", "cc by 4.0",
     "cc by-sa 2.0", "cc by-sa 2.5", "cc by-sa 3.0", "cc by-sa 4.0",
     "owner-provided", "licensed", "internal graphic",
+    "youtube audio library",
+    "ai generated",  # ảnh minh họa FLUX.1 schnell (Cloudflare Workers AI / fal.ai): luôn dán nhãn minh họa AI  # nhạc nền tải từ YouTube Studio → Thư viện âm thanh (dùng trong video YouTube, kể cả kiếm tiền)
 }
 NEEDS_PROOF = {"owner-provided", "licensed"}
 FORBIDDEN_MARKERS = ("nc", "nd", "noncommercial", "no derivatives", "all rights reserved", "editorial", "fair use", "unknown")

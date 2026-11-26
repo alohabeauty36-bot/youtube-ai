@@ -105,7 +105,7 @@ class DemoTelegramClient:
 
 def build_review_message(*, topic: str, pillar: str, title: str, duration_s: float, source_line: str,
                          qa_summary: str, unverified: int, review_url: str, studio_url: str, video_id: str,
-                         is_demo: bool) -> str:
+                         is_demo: bool, publish_at: str | None = None) -> str:
     mm, ss = divmod(int(round(duration_s)), 60)
     lines = []
     if is_demo:
@@ -121,14 +121,21 @@ def build_review_message(*, topic: str, pillar: str, title: str, duration_s: flo
         f"Kiểm tra: {qa_summary} — {unverified} claim chưa xác minh",
         f"Xem bản xem trước: {review_url}",
         f"Mở YouTube Studio: {studio_url}",
-        "Lưu ý: bấm 'Đã kiểm duyệt' KHÔNG công khai video. Hãy tự đổi trạng thái trên YouTube Studio.",
     ]
+    if publish_at:
+        lines.append(f"⏰ TỰ ĐỘNG CÔNG KHAI lúc {publish_at} nếu bạn không bấm '⛔ Dừng tự công khai'. "
+                     "Bấm 'Yêu cầu sửa' cũng huỷ lần công khai này.")
+    else:
+        lines.append("Lưu ý: bấm 'Đã kiểm duyệt' KHÔNG công khai video. Hãy tự đổi trạng thái trên YouTube Studio.")
     return "\n".join(lines)
 
 
-def build_buttons(approve_token: str, revise_token: str, studio_url: str, review_url: str) -> list[list[dict]]:
+def build_buttons(approve_token: str, revise_token: str, studio_url: str, review_url: str,
+                  hold_token: str | None = None) -> list[list[dict]]:
     rows = [[{"text": "✏️ Yêu cầu sửa", "callback_data": f"rv|{revise_token}"},
              {"text": "✅ Đã kiểm duyệt", "callback_data": f"rv|{approve_token}"}]]
+    if hold_token:
+        rows.insert(0, [{"text": "⛔ Dừng tự công khai", "callback_data": f"rv|{hold_token}"}])
     links = []
     if studio_url.startswith("https://"):
         links.append({"text": "Mở Studio", "url": studio_url})
