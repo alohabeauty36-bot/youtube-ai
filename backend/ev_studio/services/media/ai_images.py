@@ -71,14 +71,15 @@ class CloudflareImages:
                  client: httpx.Client | None = None, steps: int = 4):
         if not account_id or not token:
             raise BlockedByCredentials("Thiếu Cloudflare Account ID / API token (Thiết lập → Ảnh AI minh họa)")
-        self.url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model}"
-        self.token, self.model, self.steps = token, model, steps
+        self.url = f"https://api.cloudflare.com/client/v4/accounts/{account_id.strip()}/ai/run/{model}"
+        self.token, self.model, self.steps = token.strip(), model, steps
         self.client = client or httpx.Client(timeout=90)
 
     def generate(self, prompt: str, seed: int) -> bytes:
         try:
+            # Workers AI flux-1-schnell chỉ nhận đúng 2 trường prompt + steps (≤ 8); gửi thêm (vd. seed) → HTTP 400 code 5006
             r = self.client.post(self.url, headers={"Authorization": f"Bearer {self.token}"},
-                                 json={"prompt": prompt, "steps": self.steps, "seed": seed})
+                                 json={"prompt": prompt[:2048], "steps": min(self.steps, 8)})
         except httpx.HTTPError as e:
             raise RetryableError(f"Cloudflare AI lỗi mạng: {type(e).__name__}") from e
         if r.status_code in (401, 403):
@@ -102,7 +103,7 @@ class FalImages:
         if not key:
             raise BlockedByCredentials("Thiếu fal.ai API key (Thiết lập → Ảnh AI minh họa)")
         self.url = f"https://fal.run/{model}"
-        self.key, self.model, self.size, self.steps = key, model, image_size, steps
+        self.key, self.model, self.size, self.steps = key.strip(), model, image_size, steps
         self.client = client or httpx.Client(timeout=120, follow_redirects=True)
 
     def generate(self, prompt: str, seed: int) -> bytes:
@@ -114,7 +115,7 @@ class FalImages:
         except httpx.HTTPError as e:
             raise RetryableError(f"fal.ai lỗi mạng: {type(e).__name__}") from e
         if r.status_code in (401, 403):
-            raise BlockedByCredentials("fal.ai từ chối API key")
+            raise BlockedByCredentials(fal_auth_message(r.status_code, r.text, self.key))
         if r.status_code == 429 or r.status_code >= 500:
             raise RetryableError(f"fal.ai {r.status_code}")
         if r.status_code != 200:
@@ -133,6 +134,30 @@ class FalImages:
                 raise RetryableError(f"Tải ảnh fal.ai lỗi: {type(e).__name__}") from e
             return img.content
         raise PermanentError("fal.ai không trả ảnh")
+
+
+def fal_auth_message(status: int, text: str, key: str) -> str:
+    """Nói rõ VÌ SAO fal.ai từ chối: hết tiền (tài khoản bị khoá) hay key sai — hai việc chủ kênh phải làm khác nhau."""
+    import re
+
+    detail = ""
+    try:
+        import json as _json
+
+        body = _json.loads(text)
+        detail = str(body.get("detail") or body.get("message") or (body.get("error") or {}).get("message") or "")
+    except Exception:  # noqa: BLE001
+        detail = text or ""
+    detail = re.sub(r"\s+", " ", detail).strip()[:160]
+    low = detail.lower()
+    if any(w in low for w in ("balance", "locked", "credit", "billing", "payment")):
+        return ("fal.ai khoá tài khoản vì hết số dư — nạp credit ở fal.ai/dashboard/billing (key vẫn đúng)"
+                + (f". fal.ai: {detail}" if detail else ""))
+    hint = "" if ":" in key else " Key fal.ai thường có dạng <mã>:<chuỗi bí mật>, hãy dán đủ cả hai phần."
+    if status == 401:
+        return "fal.ai không nhận API key — kiểm tra lại key ở fal.ai/dashboard/keys." + hint + (f" fal.ai: {detail}" if detail else "")
+    return ("fal.ai từ chối (403) — key không có quyền gọi model (chọn quyền API khi tạo key) hoặc tài khoản bị khoá."
+            + hint + (f" fal.ai: {detail}" if detail else ""))
 
 
 def generator_for(s, provider: str):
