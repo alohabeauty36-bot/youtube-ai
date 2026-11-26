@@ -38,8 +38,49 @@ WEB_DIST = BACKEND / "ev_studio" / "web_dist"
 IS_WIN = platform.system() == "Windows"
 
 
+APP_NAME = "EV Creator Studio"
+BANNER = r"""
+  _____   __   ___              _             ___ _           _ _
+ | __\ \ / /  / __|_ _ ___ __ _| |_ ___ _ _  / __| |_ _  _ __| (_)___
+ | _| \ V /  | (__| '_/ -_) _` |  _/ _ \ '_| \__ \  _| || / _` | / _ \
+ |___| \_/    \___|_| \___\__,_|\__\___/_|   |___/\__|\_,_\__,_|_\___/
+"""
+
+
 def say(msg: str) -> None:
     print(f"[EV Studio] {msg}", flush=True)
+
+
+def app_version() -> str:
+    try:
+        for line in (BACKEND / "pyproject.toml").read_text(encoding="utf-8").splitlines():
+            if line.strip().startswith("version"):
+                return line.split("=", 1)[1].strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return ""
+
+
+def set_console_title(title: str) -> None:
+    """Tên phần mềm trên thanh tiêu đề cửa sổ terminal (start.bat / cmd / PowerShell / Terminal)."""
+    try:
+        if IS_WIN:
+            import ctypes
+
+            ctypes.windll.kernel32.SetConsoleTitleW(title)
+        elif sys.stdout.isatty():
+            sys.stdout.write(f"\033]0;{title}\007")
+            sys.stdout.flush()
+    except Exception:  # noqa: BLE001 — tiêu đề chỉ để trang trí, không được làm hỏng khởi động
+        pass
+
+
+def show_banner() -> None:
+    ver = app_version()
+    set_console_title(f"{APP_NAME} {ver}".strip())
+    print(BANNER.rstrip("\n"), flush=True)
+    print(f"   {APP_NAME}{'  v' + ver if ver else ''}  ·  xưởng làm video YouTube tự động", flush=True)
+    print(flush=True)
 
 
 def venv_python() -> Path:
@@ -179,6 +220,7 @@ def main() -> None:
 
     os.chdir(ROOT)
     ensure_venv(args)
+    show_banner()  # sau ensure_venv: tiến trình chạy trong .venv mới in, nên banner không bị in hai lần
     ensure_packages(args)
     ensure_ffmpeg()
     ensure_web(args)
@@ -208,7 +250,7 @@ def main() -> None:
     say("=" * 64)
     say(f"Đang chạy tại {url}   (Ctrl+C để dừng)")
     say(f"Chế độ: {s.app_mode.upper()}  — đổi chế độ và nhập key API trong Thiết lập → Cấu hình API")
-    say("Mọi video chỉ được tải lên YouTube ở trạng thái RIÊNG TƯ.")
+    say("Video tải lên YouTube ở trạng thái RIÊNG TƯ; chỉ công khai khi bạn duyệt hoặc khi bật Tự động hoàn toàn.")
     if not local_only:
         say("⚠️  Đang mở cho máy khác truy cập: hãy đặt 'Mật khẩu chủ kênh' trong Thiết lập → Bảo mật dashboard.")
     say("=" * 64)
