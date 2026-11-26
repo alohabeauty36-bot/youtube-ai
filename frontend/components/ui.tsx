@@ -9,12 +9,13 @@ export const STATE_LABEL: Record<string, string> = {
   QA_PENDING: "Chờ QA", READY_TO_UPLOAD: "Sẵn sàng tải RIÊNG TƯ", UPLOADING: "Đang tải lên", UPLOADED_PRIVATE: "Đã tải RIÊNG TƯ",
   TELEGRAM_NOTIFIED: "Đã báo Telegram", EDITOR_REVIEW: "Chờ chủ kênh duyệt", APPROVED_PRIVATE: "Đã duyệt (vẫn riêng tư)",
   REVISION_REQUESTED: "Đã yêu cầu sửa", REJECTED: "Đã loại", PUBLISHED_MANUALLY_OBSERVED: "Chủ kênh đã tự công khai",
+  PUBLISHED_AUTO: "Đã tự công khai",
   NEEDS_REVIEW: "Cần người xử lý", FAILED_RETRYABLE: "Lỗi tạm thời", FAILED_PERMANENT: "Lỗi",
 };
 
 export function StateBadge({ state }: { state: string }) {
   const cls = state.startsWith("FAILED") ? "bad" : state === "NEEDS_REVIEW" ? "warn" :
-    ["EDITOR_REVIEW", "APPROVED_PRIVATE", "UPLOADED_PRIVATE", "READY_TO_UPLOAD"].includes(state) ? "ok" : "info";
+    ["EDITOR_REVIEW", "APPROVED_PRIVATE", "UPLOADED_PRIVATE", "READY_TO_UPLOAD", "PUBLISHED_AUTO", "PUBLISHED_MANUALLY_OBSERVED"].includes(state) ? "ok" : "info";
   return <span className={`badge ${cls}`} title={state}>{STATE_LABEL[state] || state}</span>;
 }
 

@@ -1,4 +1,5 @@
-"""Xử lý nút Telegram: token 1 lần, có hạn, đúng chat_id allowlist. Không có hành động công khai."""
+"""Xử lý nút Telegram: token 1 lần, có hạn, đúng chat_id allowlist. Không có nút nào công khai video;
+nút "Dừng tự công khai" chỉ chặn việc tự công khai có hẹn giờ."""
 from __future__ import annotations
 
 import logging
@@ -46,10 +47,18 @@ def handle_callback(session: Session, callback: dict, tg=None) -> dict:
     if exp < now():
         return answer("⛔ Nút đã hết hạn")
     tok.used_at = now()
+    story = session.get(Story, tok.story_id)
+    if tok.action == "hold":  # chỉ chặn tự công khai; các nút duyệt/sửa vẫn dùng được
+        from ...workers.autoops import hold
+
+        if story.state not in ("EDITOR_REVIEW", "APPROVED_PRIVATE", "UPLOADED_PRIVATE", "TELEGRAM_NOTIFIED"):
+            session.commit()
+            return answer(f"⛔ Video đang ở trạng thái {story.state}, không còn hẹn công khai")
+        hold(session, story, f"telegram:{chat_id}", True)
+        return answer("✅ Đã dừng tự công khai. Video giữ RIÊNG TƯ.") | {"held": True}
     # vô hiệu hoá token còn lại của cùng tin nhắn
     for other in session.query(TelegramCallbackToken).filter_by(story_id=tok.story_id, chat_id=chat_id, used_at=None):
         other.used_at = now()
-    story = session.get(Story, tok.story_id)
     try:
         res = apply_review(session, story, tok.action, actor=f"telegram:{chat_id}", via="telegram",
                            note="Yêu cầu sửa từ Telegram" if tok.action == "request_revision" else None)

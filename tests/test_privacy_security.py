@@ -48,6 +48,19 @@ def test_source_code_never_sets_non_private():
     assert "def simulate_owner_published" in demo_fn
 
 
+def test_only_one_code_path_can_make_a_video_public():
+    """Tự công khai có hẹn giờ (Tự động hoàn toàn) là đường DUY NHẤT: publish.py tạo status public, chỉ autoops.py gọi nó."""
+    users = []
+    for f in SRC.rglob("*.py"):
+        txt = f.read_text(encoding="utf-8")
+        if "publish_video(" in txt or "publish_status(" in txt:
+            users.append(f.relative_to(SRC).as_posix())
+    assert sorted(users) == ["services/youtube/publish.py", "workers/autoops.py"]
+    auto = (SRC / "workers/autoops.py").read_text(encoding="utf-8")
+    assert "if not auto_publish_active():" in auto and "Story.publish_hold.is_(False)" in auto
+    assert "_publish_gates(db, st)" in auto and "Chưa báo chủ kênh qua Telegram" in auto
+
+
 def test_api_has_no_publish_route_or_privacy_param():
     from ev_studio.api.main import app
 
@@ -65,6 +78,25 @@ def test_no_transition_to_public_state():
         assert_transition(S.DISCOVERED, S.READY_TO_UPLOAD)
     assert_transition(S.EDITOR_REVIEW, S.APPROVED_PRIVATE)
     assert not any(s.value == "PUBLISHED" for s in S)
+    # trạng thái công khai do app tạo chỉ có PUBLISHED_AUTO: mặc định bị chặn; chỉ mở khi bật Tự động hoàn toàn + thời gian chờ
+    with pytest.raises(InvalidTransition, match="Tự động hoàn toàn"):
+        assert_transition(S.EDITOR_REVIEW, S.PUBLISHED_AUTO)
+    import ev_studio.config as cfg
+
+    on = cfg.get_settings().model_copy(update={"full_auto": True, "auto_publish_delay_minutes": 120})
+    orig = cfg.get_settings
+    cfg.get_settings = lambda: on
+    try:
+        assert_transition(S.EDITOR_REVIEW, S.PUBLISHED_AUTO)
+        assert_transition(S.APPROVED_PRIVATE, S.PUBLISHED_AUTO)
+        for src in (S.READY_TO_UPLOAD, S.UPLOADING, S.UPLOADED_PRIVATE, S.TELEGRAM_NOTIFIED, S.REVISION_REQUESTED, S.REJECTED):
+            with pytest.raises(InvalidTransition):
+                assert_transition(src, S.PUBLISHED_AUTO)
+    finally:
+        cfg.get_settings = orig
+    for src in (S.READY_TO_UPLOAD, S.UPLOADING, S.UPLOADED_PRIVATE, S.TELEGRAM_NOTIFIED, S.REVISION_REQUESTED, S.REJECTED):
+        with pytest.raises(InvalidTransition):
+            assert_transition(src, S.PUBLISHED_AUTO)
 
 
 def test_db_rejects_non_private_upload_row(db):

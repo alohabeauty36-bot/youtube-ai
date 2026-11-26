@@ -712,7 +712,9 @@ def upload_gate(session: Session, story: Story) -> list[str]:
     elif ch.is_demo != (youtube_mode() == "demo"):
         reasons.append("Kênh DEMO không dùng được ở production (và ngược lại)")
     if story.mode == "AUTOPILOT_PRIVATE":
-        if not get_setting(session, "autopilot_enabled", False) or not story.autopilot_authorized:
+        from .autoops import is_on
+
+        if not is_on(session, "autopilot_enabled") or not story.autopilot_authorized:
             reasons.append("Autopilot Private chưa được chủ kênh cho phép")
     elif not story.upload_requested_by:
         reasons.append("MANUAL: chủ kênh chưa bấm 'Tải lên RIÊNG TƯ'")
@@ -816,10 +818,14 @@ def notify_telegram_job(session: Session, story: Story, p: Providers) -> dict:
     review_url = f"{s.public_base_url.rstrip('/')}/api/review/{story.id}?t={sign_link('review', story.id)}"
     studio = f"https://studio.youtube.com/video/{up.youtube_video_id}/edit"
     pub_date = news.published_at.strftime("%d/%m/%Y") if news.published_at else "không rõ ngày"
+    from .autoops import local_hhmm, schedule_publish
+
+    publish_at = schedule_publish(story)  # Tự động hoàn toàn: hẹn giờ tự công khai (nút Dừng đi kèm)
     text = build_review_message(
         topic=story.topic, pillar=story.pillar, title=v.selected_title, duration_s=r.duration or 0,
         source_line=f"{news.publisher} — {pub_date}", qa_summary=r.qa.get("summary", "?"), unverified=unverified,
-        review_url=review_url, studio_url=studio, video_id=up.youtube_video_id, is_demo=story.is_demo)
+        review_url=review_url, studio_url=studio, video_id=up.youtube_video_id, is_demo=story.is_demo,
+        publish_at=local_hhmm(publish_at) if publish_at else None)
     tg = p.get_telegram()
     sent = 0
     for chat in sorted(chats):
@@ -831,12 +837,14 @@ def notify_telegram_job(session: Session, story: Story, p: Providers) -> dict:
             msg = TelegramMessage(story_id=story.id, chat_id=chat, text=text, is_demo=tg.is_demo, attempts=0)
             session.add(msg)
         exp = now() + timedelta(seconds=s.telegram_callback_ttl_seconds)
-        ta, trv = random_token(), random_token()
+        ta, trv, th = random_token(), random_token(), random_token()
         session.add(TelegramCallbackToken(token=ta, story_id=story.id, action="approve", chat_id=chat, expires_at=exp))
         session.add(TelegramCallbackToken(token=trv, story_id=story.id, action="request_revision", chat_id=chat, expires_at=exp))
+        if publish_at:
+            session.add(TelegramCallbackToken(token=th, story_id=story.id, action="hold", chat_id=chat, expires_at=exp))
         msg.attempts += 1
         try:
-            mid = tg.send(chat, text, build_buttons(ta, trv, studio, review_url),
+            mid = tg.send(chat, text, build_buttons(ta, trv, studio, review_url, hold_token=th if publish_at else None),
                           Path(r.thumbnail_paths[0]) if r.thumbnail_paths else None)
             msg.message_id, msg.status, msg.error = mid, "sent", None
             sent += 1
@@ -1096,7 +1104,9 @@ def create_revision(session: Session, story: Story, note: str, actor: str) -> St
 
 def autopilot_tick(session: Session, providers: Providers | None = None) -> dict:
     s = get_settings()
-    if not get_setting(session, "autopilot_enabled", False):
+    from .autoops import full_auto, is_on
+
+    if not is_on(session, "autopilot_enabled"):
         return {"ran": False, "reason": "Autopilot đang tắt"}
     ch = session.scalar(select(Channel).where(Channel.selected.is_(True)))
     if ch is None:
@@ -1115,6 +1125,10 @@ def autopilot_tick(session: Session, providers: Providers | None = None) -> dict
     used = {x for (x,) in session.execute(select(Story.news_item_id))}
     cands = list(session.scalars(select(NewsItem).where(NewsItem.status == "shortlist", NewsItem.score >= s.score_autopilot)
                                  .order_by(NewsItem.score.desc())))
+    if full_auto() and not [n for n in cands if n.id not in used]:
+        # Tự động hoàn toàn: thiếu tin ≥ ngưỡng Autopilot thì lấy tin trong shortlist (≥ ngưỡng shortlist, vẫn phải đủ claim đã xác minh)
+        cands = list(session.scalars(select(NewsItem).where(NewsItem.status == "shortlist", NewsItem.score >= s.score_shortlist)
+                                     .order_by(NewsItem.score.desc())))
     w = pillar_weights(session)  # Ban Tăng trưởng: ưu tiên trụ cột đang mang lại doanh thu/lượt xem (không hạ ngưỡng điểm)
     cands.sort(key=lambda n: -autopilot_priority(n.score, n.pillar, w))
     for n in cands:

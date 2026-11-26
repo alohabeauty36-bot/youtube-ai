@@ -16,8 +16,10 @@ def scan_and_autopilot() -> dict:
     from ..services.ingest import run_scan, scan_writer
     from .jobs import autopilot_tick, get_setting
 
+    from .autoops import full_auto, is_on
+
     with SessionLocal() as db:
-        if not get_setting(db, "scan_schedule_enabled", False):
+        if not is_on(db, "scan_schedule_enabled"):
             return {"ran": False, "reason": "Lịch quét đang tắt"}
         writer, warn = scan_writer()
         stats = run_scan(db, writer=writer, actor="scheduler", warnings=[warn] if warn else None)
@@ -27,6 +29,8 @@ def scan_and_autopilot() -> dict:
             if not r["ok"]:
                 log.warning("Quét tin theo lịch — nguồn %s: %s", r["source"], r.get("error"), extra={"evcs_source": "scheduler"})
         db.commit()
+        if full_auto():
+            return {"scan": stats, "autopilot": "Tự động hoàn toàn chạy Autopilot mỗi 10 phút"}
         ap = autopilot_tick(db)
         return {"scan": stats, "autopilot": ap}
 
@@ -89,6 +93,9 @@ def start_scheduler() -> None:
     _scheduler = BackgroundScheduler(timezone=s.timezone)
     _scheduler.add_job(scan_and_autopilot, "interval", hours=s.scan_interval_hours, id="scan", max_instances=1, coalesce=True)
     _scheduler.add_job(refresh_statuses, "interval", hours=6, id="refresh", max_instances=1, coalesce=True)
+    from .autoops import tick as auto_ops_tick
+
+    _scheduler.add_job(auto_ops_tick, "interval", minutes=10, id="autoops", max_instances=1, coalesce=True)
     _scheduler.add_job(growth_daily, "cron", hour=6, minute=23, id="growth", max_instances=1, coalesce=True)
     _scheduler.add_job(weekly_reflect, "cron", day_of_week="sun", hour=3, minute=17, id="reflect", max_instances=1, coalesce=True)
     _scheduler.start()

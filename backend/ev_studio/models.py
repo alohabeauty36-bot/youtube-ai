@@ -118,6 +118,10 @@ class Story(TimestampMixin, Base):
     blockers: Mapped[list] = mapped_column(JSON, default=list)
     lease_owner: Mapped[str | None] = mapped_column(String(64))
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Tự động hoàn toàn: hẹn giờ tự công khai, chủ kênh bấm Dừng → publish_hold; số lần tự sửa lỗi đã thử
+    publish_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    publish_hold: Mapped[bool] = mapped_column(Boolean, default=False)
+    auto_heal_attempts: Mapped[int] = mapped_column(Integer, default=0)
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
     news_item: Mapped[NewsItem | None] = relationship()

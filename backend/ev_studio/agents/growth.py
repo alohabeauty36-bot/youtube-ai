@@ -31,6 +31,7 @@ PILLARS = ("P1", "P2", "P3")
 PILLAR_FLOOR = 0.15  # mỗi trụ cột luôn giữ ít nhất 15% để tiếp tục thử nghiệm
 DEFAULT_VIEWS_PER_VIDEO = 500  # khi kênh chưa có dữ liệu video mới
 MEMO_EVERY = timedelta(days=7)
+RETAIN_DAYS = 90  # số liệu Analytics theo ngày giữ tối đa 90 ngày
 S_TARGET, S_WEIGHTS, S_GUIDANCE = "growth_stories_per_day", "growth_pillar_weights", "growth_content_guidance"
 # YPP (ad revenue): 1.000 người đăng ký + 4.000 giờ xem công khai/12 tháng; người đăng ký MỚI từ 01/02/2027 cần 8.000 giờ
 YPP_SUBS, YPP_HOURS_NOW, YPP_HOURS_2027, YPP_2027 = 1000, 4000, 8000, date(2027, 2, 1)
@@ -139,6 +140,9 @@ def sync(db, client, channel: Channel, today: date | None = None) -> dict:
             avg_view_seconds=float(v.get("averageViewDuration") or 0), avg_view_pct=float(v.get("averageViewPercentage") or 0),
             subs_gained=int(v.get("subscribersGained") or 0), revenue_usd=_f(v.get("estimatedRevenue")),
             ad_revenue_usd=_f(v.get("estimatedAdRevenue")), is_demo=client.is_demo))
+    # chỉ giữ số liệu ngày ~90 ngày gần nhất (đúng như trang Chính sách quyền riêng tư công bố)
+    db.query(ChannelMetricDay).filter(ChannelMetricDay.channel_id == cid,
+                                      ChannelMetricDay.day < (today - timedelta(days=RETAIN_DAYS)).isoformat()).delete(synchronize_session=False)
     year = client.total(today - timedelta(days=364), today)
     stats = client.channel_stats()
     db.flush()
@@ -315,9 +319,11 @@ def decide(db, status: dict) -> tuple[list[dict], list[dict], dict]:
     if status["waiting_owner_publish"]:
         owner.append({"title": f"{status['waiting_owner_publish']} video đang RIÊNG TƯ chờ bạn duyệt và công khai",
                       "detail": "Video riêng tư không có lượt xem và không có doanh thu. Xem lại rồi tự công khai trên YouTube Studio."})
-    if not get_setting(db, "autopilot_enabled", False):
+    from ..workers.autoops import is_on
+
+    if not is_on(db, "autopilot_enabled"):
         owner.append({"title": "Autopilot đang tắt", "detail": "Kế hoạch số video/ngày chỉ có tác dụng khi Autopilot bật (Thiết lập → Tự động hoá)."})
-    if not get_setting(db, "scan_schedule_enabled", False):
+    if not is_on(db, "scan_schedule_enabled"):
         owner.append({"title": "Lịch quét tin đang tắt", "detail": "Không có tin mới thì Autopilot không có gì để làm. Bật ở Bảng điều khiển."})
     if not status["monetized"]:
         y = status["ypp"]
