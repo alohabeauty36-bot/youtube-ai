@@ -9,6 +9,7 @@ from PIL import Image
 from sqlalchemy import delete
 
 from ev_studio.config import get_settings
+from ev_studio.errors import BlockedByCredentials
 from ev_studio.services.media import ai_images as ai
 from ev_studio.services.media.license_gate import evaluate
 
@@ -21,8 +22,12 @@ def jpeg(w=1024, h=1024, color=(30, 90, 160)) -> bytes:
 
 def cf_client(status=200, calls=None):
     def h(req: httpx.Request):
+        body = json.loads(req.content)
         if calls is not None:
-            calls.append(json.loads(req.content))
+            calls.append(body)
+        if set(body) - {"prompt", "steps"}:  # schema thật của Workers AI: additionalProperties = false
+            return httpx.Response(400, json={"success": False, "errors": [{"message": "AiError: Bad input: Additional or "
+                                  "unevaluated properties '/seed' at '/' not allowed", "code": 5006}]})
         assert req.url.path.endswith("/ai/run/@cf/black-forest-labs/flux-1-schnell")
         assert req.headers["Authorization"] == "Bearer tok"
         if status != 200:
@@ -126,3 +131,22 @@ def test_connection_test_reports_each_provider():
             "fal": ai.FalImages("fk", client=fal_client())}
     r = test_ai_images(settings(), generators=gens)
     assert r["ok"] and "cloudflare: tạo được ảnh 1024×1024" in r["message"] and "fal: tạo được ảnh 1024×576" in r["message"]
+
+
+def test_cloudflare_sends_only_schema_fields():
+    calls = []
+    raw = ai.CloudflareImages(" acc ", " tok ", client=cf_client(calls=calls)).generate("a calm street", seed=42)
+    assert raw[:2] == b"\xff\xd8" and set(calls[0]) == {"prompt", "steps"} and calls[0]["steps"] <= 8
+
+
+@pytest.mark.parametrize("status,body,key,expect", [
+    (403, {"detail": "User is locked. Reason: Exhausted balance. Top up your balance at fal.ai/dashboard/billing."}, "a:b", "hết số dư"),
+    (401, {"detail": "Invalid key"}, "only-id", "dán đủ cả hai phần"),
+    (401, {"detail": "Invalid key"}, "id:secret", "fal.ai/dashboard/keys"),
+    (403, {"detail": "Forbidden"}, "id:secret", "quyền API"),
+])
+def test_fal_explains_why_key_rejected(status, body, key, expect):
+    c = httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(status, json=body)))
+    with pytest.raises(BlockedByCredentials) as e:
+        ai.FalImages(key, client=c).generate("x", seed=1)
+    assert expect in str(e.value) and "secret" not in str(e.value).replace("bí mật", "")
