@@ -127,10 +127,11 @@ def story_detail(db: Session, st: Story) -> dict:
         scenes = list(db.scalars(select(Scene).where(Scene.story_id == st.id, Scene.script_version_id == cur.id).order_by(Scene.idx)))
         out["scenes"] = [{"idx": sc.idx, "start": sc.start_seconds, "end": sc.end_seconds, "visual_type": sc.visual_type,
                           "asset_ids": sc.asset_ids, "claim_ids": sc.claim_ids, "caption": sc.payload.get("caption"),
+                          "payload": {"bg": {"kind": (sc.payload.get("bg") or {}).get("kind")}, "query": sc.payload.get("query")},
                           "image_url": media_url(st.id, f"scene_{sc.idx}")} for sc in scenes]
     out["assets"] = [{"id": a.id, "provider": a.provider, "source_url": a.source_url, "creator": a.creator,
                       "review_status": a.review_status, "rejection_reason": a.rejection_reason, "is_illustration": a.is_illustration,
-                      "scene_description": a.scene_description, "is_demo": a.is_demo,
+                      "scene_description": a.scene_description, "is_demo": a.is_demo, "media_type": a.media_type,
                       "license": {"name": a.license.license_name, "url": a.license.license_url, "commercial": a.license.allowed_commercial,
                                   "attribution": a.license.attribution_text, "proof": a.license.permission_proof} if a.license else None}
                      for a in db.scalars(select(Asset).where(Asset.story_id == st.id))]

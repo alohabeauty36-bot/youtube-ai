@@ -59,7 +59,13 @@ def test_autopilot_end_to_end_demo(autopilot_story):
         scenes = list(s.scalars(select(Scene).where(Scene.story_id == st.id, Scene.script_version_id == r.script_version_id)))
         assert all(sc.asset_ids or sc.payload.get("internal_graphic") for sc in scenes)
         assert any(sc.visual_type in ("fact", "formula", "timeline", "pros_cons") for sc in scenes)  # đồ họa tự xây
-        assert all(4 - 1e-6 <= sc.end_seconds - sc.start_seconds <= 12 + 1e-6 for sc in scenes[:-1])
+        assert all(3 - 1e-6 <= sc.end_seconds - sc.start_seconds <= 9 + 1e-6 for sc in scenes[:-1])
+        # hình ảnh: mọi cảnh có nền chuyển động; phần lớn cảnh dùng video/ảnh hợp quyền (DEMO: video nền tự tạo)
+        assert all((sc.payload or {}).get("bg") for sc in scenes)
+        footage = [sc for sc in scenes if sc.asset_ids]
+        assert len(footage) >= len(scenes) * 0.5
+        assert any(s.get(Asset, sc.asset_ids[0]).media_type == "video" for sc in footage)
+        assert {sc.visual_type for sc in scenes} >= {"title", "keypoint", "broll", "credits"}
         rejected = list(s.scalars(select(Asset).where(Asset.story_id == st.id, Asset.review_status == "rejected")))
         assert len(rejected) == 2  # ảnh không giấy phép + CC BY-NC
         assert not any(a.local_path for a in rejected)  # không tải asset bị loại
@@ -164,8 +170,8 @@ def test_gates_block_unlicensed_asset_unverified_claim_and_manual_without_reques
     with SessionLocal() as s:
         st = s.get(Story, ready_story)
         r = s.get(Render, st.current_render_id)
-        scene = s.scalar(select(Scene).where(Scene.story_id == st.id, Scene.script_version_id == r.script_version_id,
-                                             Scene.visual_type == "photo"))
+        scene = next(sc for sc in s.scalars(select(Scene).where(Scene.story_id == st.id,
+                                                                  Scene.script_version_id == r.script_version_id)) if sc.asset_ids)
         a = s.get(Asset, scene.asset_ids[0])
         a.review_status = "rejected"
         c = s.scalar(select(Claim).where(Claim.news_item_id == st.news_item_id, Claim.claim_key == "c1"))

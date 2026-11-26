@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     model_research: str = "claude-sonnet-5-5"
     model_script: str = ""  # để trống = dùng anthropic_model
     model_editor: str = "claude-haiku-5-5"
+    model_director: str = "claude-haiku-5-5"  # Phòng Đạo diễn hình ảnh: danh sách cảnh quay
     openai_api_key: SecretStr | None = None
     openai_model: str = ""
     openai_base_url: str = "https://api.openai.com/v1"
@@ -140,6 +141,11 @@ class Settings(BaseSettings):
     max_videos_per_week: int = 21
     scan_interval_hours: float = 3
     freshness_max_age_hours: float = 24
+
+    # --- hình ảnh video ---
+    stock_max_queries: int = 30  # tối đa số từ khoá tìm tư liệu cho một video (Pexels: 200 lượt/giờ)
+    music_volume_db: float = -20.0  # nhạc nền (thư viện chủ kênh media_library/music), tự giảm thêm khi có giọng đọc
+    channel_brand: str = ""  # chữ logo góc màn hình; trống = tên kênh YouTube
 
     # --- render ---
     render_preset: str = "veryfast"

@@ -69,12 +69,13 @@ def get_telegram(settings: Settings | None = None):
 
 
 def get_asset_finders(settings: Settings | None = None) -> list:
-    from .services.media.finders import OwnLibraryFinder, PexelsFinder, WikimediaFinder
+    from .services.media.finders import OwnLibraryFinder, PexelsFinder, PexelsVideoFinder, WikimediaFinder
 
     s = settings or get_settings()
     finders: list = [OwnLibraryFinder(s.media_library_dir)]
     if not s.is_demo:
         if s.pexels_api_key:
+            finders.append(PexelsVideoFinder(s.pexels_api_key.get_secret_value()))  # video B-roll trước
             finders.append(PexelsFinder(s.pexels_api_key.get_secret_value()))
         if s.wikimedia_enabled:
             finders.append(WikimediaFinder(s.wikimedia_user_agent))

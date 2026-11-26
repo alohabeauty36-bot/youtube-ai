@@ -41,6 +41,7 @@ def seed_media_library() -> Path:
         "creator": "EV Creator Studio (DEMO)", "scene_description": "Trạm sạc minh họa (đồ họa tự vẽ)",
         "tags": ["tram", "sac", "charging", "xe", "dien"], "generic": True, "is_illustration": True, "is_demo": True,
     }, ensure_ascii=False, indent=1), encoding="utf-8")
+    _seed_demo_broll(root)
     nolic = root / "anh_tai_tu_web_khong_ro_quyen.jpg"
     if not nolic.exists():
         _draw_illustration(nolic, (180, 60, 60), "DEMO: no license")
@@ -53,6 +54,35 @@ def seed_media_library() -> Path:
         "scene_description": "Ảnh giấy phép phi thương mại (phải bị loại)",
     }, ensure_ascii=False), encoding="utf-8")
     return root
+
+
+DEMO_BROLL = [("demo_broll_duong_pho.mp4", "0x0b3d91", "0x2ecc71", "Cảnh đường phố (DEMO, chuyển động màu tự tạo)"),
+              ("demo_broll_tram_sac.mp4", "0x1f4a70", "0xf1c40f", "Cảnh trạm sạc (DEMO, chuyển động màu tự tạo)"),
+              ("demo_broll_cao_toc.mp4", "0x3a1d5c", "0xe74c3c", "Cảnh cao tốc (DEMO, chuyển động màu tự tạo)")]
+
+
+def _seed_demo_broll(root: Path) -> None:
+    """Video nền DEMO do FFmpeg tự tạo (dải màu chuyển động) để chạy thử luồng dựng bằng video B-roll khi chưa có
+    Pexels key. Không có FFmpeg thì bỏ qua."""
+    import shutil
+    import subprocess
+
+    if not shutil.which("ffmpeg"):
+        return
+    for name, c0, c1, desc in DEMO_BROLL:
+        f = root / name
+        if not f.exists():
+            subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i",
+                            f"gradients=s=1280x720:c0={c0}:c1={c1}:x0=0:y0=0:x1=1280:y1=720:speed=0.02:duration=12:rate=30",
+                            "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", str(f)],
+                           capture_output=True, timeout=120)
+        if f.exists():
+            (root / (name + ".license.json")).write_text(json.dumps({
+                "license_name": "Owner-provided", "allowed_commercial": True, "attribution_required": False,
+                "permission_proof": "DEMO: video do hệ thống tự tạo để kiểm thử, chủ kênh sở hữu toàn quyền",
+                "creator": "EV Creator Studio (DEMO)", "scene_description": desc, "tags": ["xe", "dien", "electric", "car"],
+                "generic": True, "is_illustration": True, "is_demo": True, "duration": 12,
+            }, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
 def seed_demo(session: Session) -> Channel:

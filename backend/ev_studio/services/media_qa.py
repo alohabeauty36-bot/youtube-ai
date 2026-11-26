@@ -32,7 +32,8 @@ def _filter_log(path: Path, vf: str | None = None, af: str | None = None) -> str
 
 def run_media_qa(video: Path, *, exact_10min: bool, dur_min: float, dur_max: float, assets: list[dict],
                  on_screen_facts_ok: bool, description: str, sources: list[dict], thumbnail: Path | None,
-                 subtitle: Path | None, music_present: bool = False, hard_min_seconds: float = 600.0) -> dict:
+                 subtitle: Path | None, music_present: bool = False, hard_min_seconds: float = 600.0,
+                 music_db: float = -20.0) -> dict:
     checks: list[dict] = []
 
     def add(name, ok, detail=""):
@@ -66,8 +67,8 @@ def run_media_qa(video: Path, *, exact_10min: bool, dur_min: float, dur_max: flo
     mean = re.search(r"mean_volume: (-?[\d.]+) dB", log)
     mxv = float(mx.group(1)) if mx else 0.0
     add("Audio không clipping (max < -0.3 dB)", mx is not None and mxv < -0.3, f"max {mxv} dB, mean {mean.group(1) if mean else '?'} dB")
-    add("Nhạc không át giọng", True if not music_present else False,
-        "Không có nhạc nền trong MVP" if not music_present else "Cần kiểm tra thủ công mức nhạc")
+    add("Nhạc không át giọng", (not music_present) or music_db <= -14,
+        "Không có nhạc nền" if not music_present else f"Nhạc nền {music_db:.0f} dB, tự giảm thêm khi có giọng (sidechain)")
     unlicensed = [x["id"] for x in assets if x.get("review_status") != "approved"]
     add("Mọi asset đã qua license gate", not unlicensed, ", ".join(unlicensed))
     missing_src = [s["url"] for s in sources if s["url"] not in description]

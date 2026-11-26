@@ -4,8 +4,10 @@ import { api, fmtTime, mediaUrl } from "@/lib/api";
 import { Badge, Card, ErrorBox } from "@/components/ui";
 import { StoryHeader, useStory } from "@/components/story";
 
-const COLORS: Record<string, string> = { title: "#2ecc71", fact: "#3498db", formula: "#9b59b6", timeline: "#f1c40f", pros_cons: "#e67e22",
-  question: "#1abc9c", photo: "#ecf0f1", narration: "#7f8c8d", credits: "#95a5a6" };
+const COLORS: Record<string, string> = { title: "#2ecc71", broll: "#5d6d7e", keypoint: "#2980b9", stat: "#16a085", fact: "#3498db",
+  question: "#1abc9c", formula: "#9b59b6", timeline: "#f1c40f", pros_cons: "#e67e22", credits: "#95a5a6" };
+const LABEL: Record<string, string> = { title: "mở đầu", broll: "video nền", keypoint: "chữ nhấn", stat: "số liệu", fact: "dữ kiện",
+  question: "câu hỏi", formula: "phép tính", timeline: "mốc thời gian", pros_cons: "lợi/rủi ro", credits: "nguồn" };
 
 function Media() {
   const { data: s, error, reload } = useStory();
@@ -30,11 +32,12 @@ function Media() {
         <Card title={`Timeline (${s.scenes?.length || 0} cảnh · ${fmtTime(total)})`} right={<button onClick={async () => { try { await api(`/api/stories/${s.id}/render`, { method: "POST" }); reload(); } catch (e) { setErr(e); } }}>Dựng lại</button>}>
           <div className="timeline">{(s.scenes || []).map((c: any) => <div key={c.idx} title={`${c.visual_type} ${fmtTime(c.start)}–${fmtTime(c.end)}`}
             style={{ left: `${(c.start / total) * 100}%`, width: `${((c.end - c.start) / total) * 100}%`, background: COLORS[c.visual_type] || "#555" }}>{c.visual_type}</div>)}</div>
-          <div className="row small" style={{ marginTop: 6 }}>{Object.entries(COLORS).map(([k, v]) => <span key={k}><span style={{ display: "inline-block", width: 10, height: 10, background: v, borderRadius: 2 }} /> {k}</span>)}</div>
+          <div className="row small" style={{ marginTop: 6 }}>{Object.entries(COLORS).map(([k, v]) => <span key={k}><span style={{ display: "inline-block", width: 10, height: 10, background: v, borderRadius: 2 }} /> {LABEL[k] || k}</span>)}</div>
         </Card>
         <Card title="Cảnh">
           <div className="thumbs">{(s.scenes || []).map((c: any) => <div key={c.idx}><img src={mediaUrl(c.image_url)} alt={c.caption} loading="lazy" />
-            <div className="small"><b>#{c.idx}</b> {fmtTime(c.start)}–{fmtTime(c.end)} <Badge>{c.visual_type}</Badge> {c.asset_ids.length ? <Badge kind="ok">asset</Badge> : <Badge>đồ họa nội bộ</Badge>}
+            <div className="small"><b>#{c.idx}</b> {fmtTime(c.start)}–{fmtTime(c.end)} <Badge>{LABEL[c.visual_type] || c.visual_type}</Badge> {c.asset_ids.length ? <Badge kind="ok">{c.payload?.bg?.kind === "video" ? "video" : "ảnh"}</Badge> : <Badge>đồ họa nội bộ</Badge>}
+              {c.payload?.query && <div className="muted">🔎 {c.payload.query}</div>}
               {c.claim_ids.map((x: string) => <Badge key={x} kind="info">{x}</Badge>)}</div></div>)}</div>
         </Card>
         <Card title="Tư liệu & giấy phép" right={<button onClick={async () => { try { await api(`/api/stories/${s.id}/assets/search`, { method: "POST" }); reload(); } catch (e) { setErr(e); } }}>Tìm tư liệu</button>}>

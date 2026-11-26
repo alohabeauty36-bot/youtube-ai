@@ -277,117 +277,285 @@ def tts_job(session: Session, story: Story, p: Providers) -> dict:
 
 # ------------------------------------------------------------------ 6. media
 
-def media_job(session: Session, story: Story, p: Providers) -> dict:
-    news = story.news_item
-    models = news.model_names or []
-    q = " ".join(models + ["xe điện", "electric car", "trạm sạc", "charging"])
-    adir = story_dir(story) / "assets"
-    approved, rejected = 0, 0
-    for finder in p.get_finders():
-        try:
-            found = finder.search(q)
-        except RetryableError:
-            raise
-        for fa in found:
-            exists = session.scalar(select(Asset).where(Asset.story_id == story.id, Asset.source_url == fa.source_url,
-                                                        Asset.local_path == fa.local_path))
-            if exists:
-                continue
-            dec = evaluate(fa.__dict__, story_models=models)
-            a = Asset(story_id=story.id, provider=fa.provider, source_url=fa.source_url, creator=fa.creator,
-                      model_name=fa.model_name, year=fa.year, scene_description=fa.scene_description,
-                      review_status=dec.status, rejection_reason=None if dec.status == "approved" else dec.reason,
-                      is_ai_generated=fa.is_ai_generated, is_illustration=dec.is_illustration, is_demo=fa.is_demo)
-            a.license = AssetLicense(license_name=fa.license_name, license_url=fa.license_url,
-                                     allowed_commercial=fa.allowed_commercial, attribution_required=fa.attribution_required,
-                                     attribution_text=fa.attribution_text, permission_proof=fa.permission_proof)
-            if dec.status == "approved":
-                path = download(fa, adir)  # CHỈ tải sau khi gate cho phép
-                a.local_path, a.content_hash, a.downloaded_at = str(path), file_sha256(path), now()
-                approved += 1
-            else:
-                rejected += 1
-            session.add(a)
-            audit(session, "system", f"asset.{dec.status}", "asset", None, reason=dec.reason, provider=fa.provider)
-    session.flush()
-    return {"approved": approved, "rejected": rejected, "fallback_internal_graphics": approved == 0}
-
-
-# ------------------------------------------------------------------ 7. storyboard
-
-def storyboard_job(session: Session, story: Story, p: Providers) -> dict:
+def _scene_inputs(session: Session, story: Story) -> tuple[ScriptVersion, list[dict], float]:
     sv = current_script(session, story)
     segs = [{"segment_key": t.segment_key, "paragraph_idx": t.paragraph_idx, "text": t.text, "start": t.start, "end": t.end}
             for t in session.scalars(select(TTSSegment).where(TTSSegment.script_version_id == sv.id).order_by(TTSSegment.idx))]
     if not segs:
         raise PermanentError("Chưa có audio segment")
-    total = sv.actual_audio_seconds
+    return sv, segs, sv.actual_audio_seconds
+
+
+def _plan_path(story: Story, sv: ScriptVersion) -> Path:
+    return story_dir(story) / f"shotplan_v{sv.version}.json"
+
+
+def media_job(session: Session, story: Story, p: Providers) -> dict:
+    """Phòng Đạo diễn lên cảnh quay → tìm tư liệu THEO TỪNG TỪ KHOÁ (video B-roll trước, rồi ảnh) → license gate → tải."""
+    import json
+
+    from ..services import shotplan
+
+    s = get_settings()
+    news = story.news_item
+    models = news.model_names or []
+    sv, segs, total = _scene_inputs(session, story)
+    scenes = storyboard.group_segments(segs, total)
+    verified = [{"claim_key": c.claim_key, "text": c.text, "value": c.value, "unit": c.unit}
+                for c in story_claims(session, story) if c.status == "verified"]
+    brain = None
+    if not story.is_demo:
+        try:
+            brain = getattr(p.get_writer(), "brain", None)
+        except BlockedByCredentials:
+            brain = None
+    plan = shotplan.plan_shots([{"idx": x.idx, "text": x.text, "start": x.start, "end": x.end} for x in scenes],
+                               claims=verified, claim_map=sv.content.get("editorial_claim_map", []),
+                               title=sv.content["title_options"][sv.content["selected_title_index"]]["title"],
+                               pillar=story.pillar, brain=brain, story_id=story.id)
+    queries: list[str] = []
+    for sh in plan:
+        if sh["query_en"] not in queries:
+            queries.append(sh["query_en"])
+    queries = queries[: max(1, s.stock_max_queries)]
+    adir = story_dir(story) / "assets"
+    cache = s.artifacts_dir / "_stock_cache"
+    approved, rejected, by_query, errors = 0, 0, {}, []
+
+    def take(fa, query):
+        nonlocal approved, rejected
+        exists = session.scalar(select(Asset).where(Asset.story_id == story.id, Asset.source_url == fa.source_url,
+                                                    Asset.local_path == fa.local_path)) if fa.source_url or fa.local_path else None
+        if exists:
+            if exists.review_status == "approved":
+                by_query.setdefault(query, []).append(exists.id)
+            return
+        dec = evaluate(fa.__dict__, story_models=models)
+        a = Asset(story_id=story.id, provider=fa.provider, source_url=fa.source_url, creator=fa.creator,
+                  model_name=fa.model_name, year=fa.year, scene_description=fa.scene_description, media_type=fa.media_type,
+                  review_status=dec.status, rejection_reason=None if dec.status == "approved" else dec.reason,
+                  is_ai_generated=fa.is_ai_generated, is_illustration=dec.is_illustration, is_demo=fa.is_demo)
+        a.license = AssetLicense(license_name=fa.license_name, license_url=fa.license_url,
+                                 allowed_commercial=fa.allowed_commercial, attribution_required=fa.attribution_required,
+                                 attribution_text=fa.attribution_text, permission_proof=fa.permission_proof)
+        if dec.status == "approved":
+            path = download(fa, adir, cache_dir=cache)  # CHỈ tải sau khi gate cho phép
+            a.local_path, a.content_hash, a.downloaded_at = str(path), file_sha256(path), now()
+            approved += 1
+        else:
+            rejected += 1
+        session.add(a)
+        session.flush()
+        if dec.status == "approved":
+            by_query.setdefault(query, []).append(a.id)
+        audit(session, "system", f"asset.{dec.status}", "asset", a.id, reason=dec.reason, provider=fa.provider)
+
+    for finder in p.get_finders():
+        if finder.name == "own_library":  # thư viện chủ kênh: theo mẫu xe + chủ đề chung
+            for fa in finder.search(" ".join(models + ["xe điện", "electric car", "trạm sạc", "charging"])):
+                take(fa, "__library__")
+            continue
+        for q in queries:
+            try:
+                found = finder.search(q, 2 if finder.name == "pexels_video" else 1)
+            except RetryableError as e:  # hết lượt/mất mạng: giữ tư liệu đã có, phần còn lại dùng đồ họa
+                errors.append(f"{finder.name}: {e}")
+                log.warning("Tìm tư liệu '%s' qua %s dừng: %s", q, finder.name, e, extra={"evcs_story_id": story.id})
+                break
+            for fa in found:
+                try:
+                    take(fa, q)
+                except RetryableError as e:
+                    errors.append(f"tải {fa.provider}: {e}")
+    plan_doc = {"scenes": len(scenes), "plan": plan, "queries": queries, "assets_by_query": by_query, "errors": errors[:10],
+                "planner": plan[0]["source"] if plan else None}
+    pp = _plan_path(story, sv)
+    pp.parent.mkdir(parents=True, exist_ok=True)
+    pp.write_text(json.dumps(plan_doc, ensure_ascii=False, indent=1), encoding="utf-8")
+    videos = sum(len(v) for k, v in by_query.items() if k != "__library__")
+    return {"approved": approved, "rejected": rejected, "queries": len(queries), "planner": plan_doc["planner"],
+            "stock_assets": videos, "fallback_internal_graphics": approved == 0, "errors": errors[:3]}
+
+
+# ------------------------------------------------------------------ 7. storyboard
+
+def storyboard_job(session: Session, story: Story, p: Providers) -> dict:
+    import json
+
+    from ..services import shotplan
+
+    sv, segs, total = _scene_inputs(session, story)
     news = story.news_item
     claims = {c.claim_key: c for c in story_claims(session, story) if c.status == "verified"}
-    photos = [{"id": a.id, "path": a.local_path, "caption": a.scene_description, "illustration": a.is_illustration,
-               "credit": a.license.attribution_text if a.license else None}
-              for a in session.scalars(select(Asset).where(Asset.story_id == story.id, Asset.review_status == "approved",
-                                                           Asset.media_type == "image"))]
+    claim_info = {k: {"text": c.text, "value": c.value, "unit": c.unit} for k, c in claims.items()}
     title = sv.content["title_options"][sv.content["selected_title_index"]]["title"]
     scenes = storyboard.group_segments(segs, total)
-    scenes = storyboard.assign_visuals(scenes, claim_map=sv.content["editorial_claim_map"],
-                                       claims={k: {"text": c.text} for k, c in claims.items()}, title=title,
-                                       photo_assets=photos, has_timeline=bool(news.effective_to or news.effective_from),
-                                       pillar=story.pillar)
+    pp = _plan_path(story, sv)
+    doc = json.loads(pp.read_text(encoding="utf-8")) if pp.exists() else {}
+    plan = {x["idx"]: x for x in doc.get("plan", [])}
+    if len(plan) != len(scenes):  # kế hoạch cũ/thiếu → lập lại bằng từ điển (miễn phí)
+        plan = {x["idx"]: x for x in shotplan.plan_shots(
+            [{"idx": x.idx, "text": x.text, "start": x.start, "end": x.end} for x in scenes],
+            claims=[{"claim_key": k, **v} for k, v in claim_info.items()], claim_map=sv.content.get("editorial_claim_map", []),
+            title=title, pillar=story.pillar)}
+    by_query = doc.get("assets_by_query", {})
+    assets = []
+    for a in session.scalars(select(Asset).where(Asset.story_id == story.id, Asset.review_status == "approved",
+                                                 Asset.local_path.is_not(None))):
+        if not a.local_path or not Path(a.local_path).exists():
+            continue
+        dur = renderer.video_duration(Path(a.local_path)) if a.media_type == "video" else None
+        if a.media_type == "video" and (not dur or dur < 2):
+            continue
+        assets.append({"id": a.id, "path": a.local_path, "media_type": a.media_type, "duration": dur,
+                       "illustration": a.is_illustration, "credit": a.license.attribution_text if a.license else None})
     for old in session.scalars(select(Scene).where(Scene.story_id == story.id, Scene.script_version_id == sv.id)):
         session.delete(old)
     gdir = story_dir(story) / f"scenes_v{sv.version}"
     demo = story.is_demo
-    by_id = {x["id"]: x for x in photos}
+    ch = session.get(Channel, story.channel_id) if story.channel_id else None
+    brand = get_settings().channel_brand or (ch.title.replace("[DEMO] ", "") if ch and ch.title else "")
     src_by_id = {x["source_id"]: x for x in (news.supporting_sources or [])}
+    excerpt_to_claim = [(strip_accents_(e["relevant_script_excerpt"])[:80], e["claim_id"])
+                        for e in sv.content.get("editorial_claim_map", [])]
+    used = {"claims": set(), "formula": False, "timeline": False, "pros_cons": False}
+    uses: dict[str, int] = {}
+    last_seen: dict[str, int] = {}
+    stills: dict[str, Path] = {}
+    types: dict[str, int] = {}
+    with_footage = 0
     for sc in scenes:
-        path = gdir / f"scene_{sc.idx:03d}.png"
-        vt = sc.visual_type
-        if vt == "title":
-            graphics.title_card(path, title, sv.content.get("main_angle", ""), demo, kicker=f"{story.pillar} · Phân tích")
-        elif vt == "fact":
-            c = claims[sc.claim_ids[0]]
-            src = src_by_id.get((c.source_ids or ["s1"])[0], {})
-            graphics.fact_card(path, c.text, src.get("publisher") or "", (src.get("published_at") or "")[:10], c.claim_key, demo)
-        elif vt == "formula":
-            graphics.formula_card(path, "Chi phí năng lượng mỗi tháng (ví dụ)",
-                                  ["Quãng đường tháng × mức tiêu thụ ÷ 100 = số kWh cần",
-                                   "Số kWh × đơn giá bạn thực trả = chi phí năng lượng",
-                                   "So sánh với chi phí nhiên liệu hiện tại của bạn"],
-                                  "Đây là phép tính minh họa. Giả định: quãng đường, mức tiêu thụ và đơn giá do người xem tự thay.", demo)
-        elif vt == "timeline":
-            marks = [(d, lbl) for d, lbl in ((news.published_at, "Ngày công bố"), (news.effective_from, "Bắt đầu áp dụng"),
-                                             (news.effective_to, "Hết hạn")) if d]
-            marks.sort(key=lambda x: x[0])
-            items = [(d.strftime("%d/%m"), lbl) for d, lbl in marks]
-            graphics.timeline_card(path, items or [("—", "Chưa rõ mốc thời gian")], demo)
-        elif vt == "pros_cons":
-            rp = latest_pack(session, story).content
-            graphics.pros_cons_card(path, [rp.get("video_unique_value", "Hiểu rõ điều kiện")] + [c.text for c in list(claims.values())[:1]],
-                                    rp.get("counterarguments", [])[:3], demo)
-        elif vt == "question":
-            graphics.question_card(path, sc.payload["caption"], demo)
-        elif vt == "photo":
-            a = by_id[sc.asset_ids[0]]
-            graphics.photo_card(path, Path(a["path"]), sc.payload["caption"], a["credit"], a["illustration"], demo)
-        elif vt == "credits":
-            srcs = [f"{x.get('publisher')} — {x['url']}" for x in (news.supporting_sources or [])]
-            graphics.credits_card(path, srcs, [x["credit"] for x in photos if x["credit"]], demo)
+        pl = plan.get(sc.idx, {})
+        kind, claim_id = storyboard.special_kind(sc, excerpt_to_claim=excerpt_to_claim, claims=claim_info, used=used,
+                                                 has_timeline=bool(news.effective_to or news.effective_from))
+        if sc.idx == 0:
+            kind = "title"
+        elif sc.idx == len(scenes) - 1 and len(scenes) > 2:
+            kind = "credits"
+        elif kind is None:
+            kind = pl.get("kind", "broll")
+            claim_id = pl.get("claim_id") if kind == "stat" and pl.get("claim_id") in claim_info else None
+            if kind == "stat" and not claim_id:
+                kind = "keypoint"
+        caption = pl.get("overlay_vi") or storyboard.key_sentence(sc.text, 12)
+        ov_path = gdir / f"overlay_{sc.idx:03d}.png"
+        bg_asset = None
+        motion = renderer.MOTIONS[sc.idx % len(renderer.MOTIONS)]
+        if kind in ("formula", "timeline", "pros_cons", "credits"):  # đồ họa thông tin toàn màn hình, có Ken Burns nhẹ
+            gpath = gdir / f"scene_{sc.idx:03d}.png"
+            if kind == "formula":
+                graphics.formula_card(gpath, "Chi phí năng lượng mỗi tháng (ví dụ)",
+                                      ["Quãng đường tháng × mức tiêu thụ ÷ 100 = số kWh cần",
+                                       "Số kWh × đơn giá bạn thực trả = chi phí năng lượng",
+                                       "So sánh với chi phí nhiên liệu hiện tại của bạn"],
+                                      "Đây là phép tính minh họa. Giả định: quãng đường, mức tiêu thụ và đơn giá do người xem tự thay.", demo)
+            elif kind == "timeline":
+                marks = [(d, lbl) for d, lbl in ((news.published_at, "Ngày công bố"), (news.effective_from, "Bắt đầu áp dụng"),
+                                                 (news.effective_to, "Hết hạn")) if d]
+                marks.sort(key=lambda x: x[0])
+                graphics.timeline_card(gpath, [(d.strftime("%d/%m"), lbl) for d, lbl in marks] or [("—", "Chưa rõ mốc thời gian")], demo)
+            elif kind == "pros_cons":
+                rp = latest_pack(session, story).content
+                graphics.pros_cons_card(gpath, [rp.get("video_unique_value", "Hiểu rõ điều kiện")] + [c.text for c in list(claims.values())[:1]],
+                                        rp.get("counterarguments", [])[:3], demo)
+            else:
+                srcs = [f"{x.get('publisher')} — {x['url']}" for x in (news.supporting_sources or [])]
+                credits = [a["credit"] for a in assets if a["credit"]]
+                music = _pick_music(story)
+                if music and music.get("credit"):
+                    credits.append(music["credit"])
+                graphics.credits_card(gpath, srcs, credits, demo)
+            bg = {"kind": "graphic", "path": str(gpath), "motion": "zoom_in"}
+            overlay = None
         else:
-            graphics.narration_card(path, sc.payload["caption"], demo)
+            bg_asset = storyboard.pick_background(sc.idx, pl.get("query_en"), assets, by_query, uses, last_seen)
+            if bg_asset is not None:
+                with_footage += 1
+                off = 0.0
+                if bg_asset["media_type"] == "video" and bg_asset["duration"]:
+                    span = max(0.0, bg_asset["duration"] - (sc.end - sc.start) - 0.5)
+                    off = round(((uses[bg_asset["id"]] - 1) * 0.37 * span) % (span + 0.01), 2) if span > 0 else 0.0
+                bg = {"kind": "video" if bg_asset["media_type"] == "video" else "image", "path": bg_asset["path"],
+                      "offset": off, "motion": motion}
+            else:
+                bg = {"kind": "graphic", "path": str(graphics.backdrop(gdir / f"backdrop_{sc.idx % 5}.png", sc.idx % 5)), "motion": motion}
+            if kind == "title":
+                overlay = graphics.overlay_title(ov_path, title, sv.content.get("main_angle", ""), f"{story.pillar} · Phân tích", brand, demo)
+                bg["dim"] = 0.2
+            elif kind in ("fact", "stat") and claim_id:
+                c = claims[claim_id]
+                src = src_by_id.get((c.source_ids or ["s1"])[0], {})
+                src_line = (src.get("publisher") or "") + (f" — {(src.get('published_at') or '')[:10]}" if src.get("published_at") else "")
+                if kind == "stat":
+                    overlay = graphics.overlay_stat(ov_path, str(c.value), c.unit or "", caption, src_line or "", brand, demo)
+                else:
+                    overlay = graphics.overlay_fact(ov_path, c.text, src_line or "", c.claim_key, brand, demo)
+                bg["dim"] = 0.45
+            elif kind == "question":
+                overlay = graphics.overlay_question(ov_path, storyboard.key_sentence(sc.text, 18), brand, demo)
+                bg["dim"] = 0.35
+            elif kind == "keypoint":
+                overlay = graphics.overlay_keypoint(ov_path, caption, "Điểm chính", brand, demo)
+            else:
+                overlay = graphics.overlay_clean(ov_path, brand, demo)
+        # ảnh xem trước của cảnh (trang Tư liệu & cảnh): khung nền + lớp phủ
+        prev = gdir / f"scene_{sc.idx:03d}.png"
+        if bg["kind"] == "video":
+            key = f"{bg['path']}@{bg['offset']}"
+            if key not in stills:
+                stills[key] = renderer.still_from_video(Path(bg["path"]), bg["offset"] + 0.5, gdir / f"still_{len(stills):03d}.jpg") or Path(bg["path"])
+            base_img = stills[key]
+        else:
+            base_img = Path(bg["path"])
+        if kind not in ("formula", "timeline", "pros_cons", "credits"):
+            graphics.compose_preview(prev, base_img, overlay)
         session.add(Scene(story_id=story.id, script_version_id=sv.id, idx=sc.idx, start_seconds=sc.start, end_seconds=sc.end,
-                          narration_segment_ids=sc.segment_keys, visual_type=vt, asset_ids=sc.asset_ids,
-                          claim_ids=sc.claim_ids, payload=sc.payload | {"internal_graphic": vt != "photo"}, image_path=str(path)))
+                          narration_segment_ids=sc.segment_keys, visual_type=kind,
+                          asset_ids=[bg_asset["id"]] if bg_asset else [], claim_ids=[claim_id] if claim_id else [],
+                          payload=sc.payload | {"bg": bg, "overlay": str(overlay) if overlay else None, "caption": caption,
+                                                "query": pl.get("query_en"), "internal_graphic": bg_asset is None},
+                          image_path=str(prev)))
+        types[kind] = types.get(kind, 0) + 1
     session.flush()
-    types = {}
-    for sc in scenes:
-        types[sc.visual_type] = types.get(sc.visual_type, 0) + 1
-    return {"scenes": len(scenes), "types": types}
+    return {"scenes": len(scenes), "types": types, "with_footage": with_footage,
+            "footage_ratio": round(with_footage / max(1, len(scenes)), 2), "planner": doc.get("planner")}
+
+
+def strip_accents_(s: str) -> str:
+    from ..services.ranker import strip_accents
+
+    return strip_accents(s)
+
+
+def _pick_music(story: Story) -> dict | None:
+    """Nhạc nền từ media_library/music (mỗi file kèm <tên>.license.json, qua license gate). Chọn cố định theo video."""
+    import hashlib
+    import json
+
+    root = get_settings().media_library_dir / "music"
+    if not root.exists():
+        return None
+    ok = []
+    for f in sorted(root.glob("*")):
+        if f.suffix.lower() not in (".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac"):
+            continue
+        side = f.with_name(f.name + ".license.json")
+        meta = json.loads(side.read_text(encoding="utf-8")) if side.exists() else {}
+        if not meta:
+            continue
+        dec = evaluate({**meta, "provider": "own_library", "source_url": meta.get("source_url") or str(f)})
+        if dec.status == "approved":
+            ok.append({"path": str(f), "credit": meta.get("attribution_text"), "license": meta.get("license_name")})
+    if not ok:
+        return None
+    return ok[int(hashlib.sha1(story.id.encode()).hexdigest(), 16) % len(ok)]
 
 
 # ------------------------------------------------------------------ 8. render
 
 def render_job(session: Session, story: Story, p: Providers) -> dict:
+    import json
+
     s = get_settings()
     sv = current_script(session, story)
     scenes = list(session.scalars(select(Scene).where(Scene.story_id == story.id, Scene.script_version_id == sv.id).order_by(Scene.idx)))
@@ -400,14 +568,22 @@ def render_job(session: Session, story: Story, p: Providers) -> dict:
     for sc in scenes:
         clip = clips_dir / f"clip_{sc.idx:03d}.mp4"
         if not clip.exists():
-            renderer.render_scene_clip(Path(sc.image_path), sc.end_seconds - sc.start_seconds, clip,
-                                       ken_burns=sc.visual_type == "photo", fps=s.render_fps)
+            bg = (sc.payload or {}).get("bg")
+            if bg:
+                ov = sc.payload.get("overlay")
+                renderer.render_layered_clip(bg, Path(ov) if ov else None, sc.end_seconds - sc.start_seconds, clip, s.render_fps)
+            else:  # cảnh dựng bằng phiên bản cũ
+                renderer.render_scene_clip(Path(sc.image_path), sc.end_seconds - sc.start_seconds, clip,
+                                           ken_burns=True, fps=s.render_fps)
         clips.append(clip)
     cues = subtitles.build_cues(segs)
     srt = subtitles.write_srt(cues, d / "subtitles.vi.srt")
     ass = subtitles.write_ass(cues, d / "subtitles.vi.ass")
     audio = Path(story_dir(story) / f"audio_v{sv.version}" / "narration.wav")
-    final = renderer.compose(clips, audio, ass, d / "final_1080p.mp4", d)
+    music = _pick_music(story)
+    (d / "music.json").write_text(json.dumps({"music": music, "volume_db": s.music_volume_db}, ensure_ascii=False), encoding="utf-8")
+    final = renderer.compose(clips, audio, ass, d / "final_1080p.mp4", d,
+                             music=Path(music["path"]) if music else None, music_db=s.music_volume_db)
     prev = renderer.preview_360p(final, d / "preview_360p.mp4")
     r = Render(story_id=story.id, script_version_id=sv.id, path=str(final), preview_path=str(prev),
                subtitle_srt_path=str(srt), subtitle_ass_path=str(ass), audio_path=str(audio), sha256=file_sha256(final),
@@ -415,7 +591,7 @@ def render_job(session: Session, story: Story, p: Providers) -> dict:
     session.add(r)
     session.flush()
     story.current_render_id = r.id
-    return {"render_id": r.id, "path": str(final)}
+    return {"render_id": r.id, "path": str(final), "music": bool(music)}
 
 
 # ------------------------------------------------------------------ 9. SEO + thumbnail
@@ -426,11 +602,22 @@ def seo_job(session: Session, story: Story, p: Providers) -> dict:
     news = story.news_item
     content = sv.content
     title = content["title_options"][content["selected_title_index"]]["title"]
-    photos = list(session.scalars(select(Asset).where(Asset.story_id == story.id, Asset.review_status == "approved")))
-    photo = Path(photos[0].local_path) if photos else None
     d = Path(r.path).parent
-    t1 = thumbnail.make_thumbnail(d / "thumbnail_A.jpg", title, photo, "A", story.is_demo, bool(photos and photos[0].is_illustration))
-    t2 = thumbnail.make_thumbnail(d / "thumbnail_B.jpg", title, photo, "B", story.is_demo, bool(photos and photos[0].is_illustration))
+    used_ids = [i for sc in session.scalars(select(Scene).where(Scene.story_id == story.id, Scene.script_version_id == sv.id)
+                                              .order_by(Scene.idx)) for i in sc.asset_ids]
+    approved = {a.id: a for a in session.scalars(select(Asset).where(Asset.story_id == story.id, Asset.review_status == "approved"))}
+    photos = [approved[i] for i in dict.fromkeys(used_ids) if i in approved] or list(approved.values())
+    # ảnh nền thumbnail: ảnh tĩnh đầu tiên; không có thì cắt một khung từ video B-roll đầu tiên
+    pick = next((a for a in photos if a.media_type == "image" and a.local_path), None)
+    photo = Path(pick.local_path) if pick else None
+    if photo is None:
+        vid = next((a for a in photos if a.media_type == "video" and a.local_path), None)
+        if vid is not None:
+            photo = renderer.still_from_video(Path(vid.local_path), 1.5, d / "thumbnail_source.jpg")
+            pick = vid
+    illus = bool(pick and pick.is_illustration)
+    t1 = thumbnail.make_thumbnail(d / "thumbnail_A.jpg", title, photo, "A", story.is_demo, illus)
+    t2 = thumbnail.make_thumbnail(d / "thumbnail_B.jpg", title, photo, "B", story.is_demo, illus)
     r.thumbnail_paths = [str(t1), str(t2)]
     # chương theo đoạn văn
     paras = {}
@@ -439,7 +626,10 @@ def seo_job(session: Session, story: Story, p: Providers) -> dict:
     marks = [(start, storyboard.chapter_title(txt)) for _, (start, txt) in sorted(paras.items()) if start > 0]
     chapters = seo.chapters_from_scenes([], marks)
     sources = [x for x in (news.supporting_sources or [])]
-    credits = [a.license.attribution_text for a in photos if a.license and a.license.attribution_text]
+    credits = list(dict.fromkeys(a.license.attribution_text for a in photos if a.license and a.license.attribution_text))[:40]
+    music = _pick_music(story)
+    if music and music.get("credit"):
+        credits.append(f"Nhạc nền: {music['credit']}")
     idem_tag = "evcs-" + input_hash(story.id, r.sha256)[:12]
     desc = seo.build_description(main_angle=content["main_angle"], summary_line=content["title_options"][0]["title"],
                                  chapters=chapters, sources=sources, asset_credits=credits,
@@ -468,7 +658,12 @@ def qa_job(session: Session, story: Story, p: Providers) -> dict:
     verified = {c.claim_key for c in story_claims(session, story) if c.status == "verified"}
     facts_ok = all(cid in verified for sc in scenes for cid in sc.claim_ids) and all(
         f["claim_id"] in verified for f in sv.content.get("production_notes", {}).get("key_on_screen_facts", []))
+    import json as _json
+
+    mj = Path(r.path).parent / "music.json"
+    music_info = _json.loads(mj.read_text(encoding="utf-8")) if mj.exists() else {}
     res = media_qa.run_media_qa(Path(r.path), exact_10min=True, dur_min=s.duration_min_seconds, dur_max=s.duration_max_seconds,
+                                music_present=bool(music_info.get("music")), music_db=float(music_info.get("volume_db") or -20),
                                 assets=assets, on_screen_facts_ok=facts_ok, description=v.description if v else "",
                                 sources=story.news_item.supporting_sources or [],
                                 thumbnail=Path(r.thumbnail_paths[0]) if r.thumbnail_paths else None,
