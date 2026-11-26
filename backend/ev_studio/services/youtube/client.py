@@ -23,6 +23,9 @@ SCOPES = [
     ANALYTICS_SCOPE,  # Ban Tăng trưởng: chỉ ĐỌC số liệu, không sửa gì trên kênh
     MONETARY_SCOPE,
 ]
+# Đổi trạng thái video (videos.update) cần quyền này; chỉ dùng cho tự công khai có hẹn giờ (services/youtube/publish.py)
+MANAGE_SCOPE = "https://www.googleapis.com/auth/youtube.force-ssl"
+SCOPES.append(MANAGE_SCOPE)
 RETRIABLE_STATUS = {500, 502, 503, 504}
 
 
@@ -35,15 +38,20 @@ class YouTubeClient(Protocol):
     def set_thumbnail(self, video_id: str, path: Path) -> None: ...
     def get_privacy(self, video_id: str) -> str | None: ...
     def force_private(self, video_id: str) -> None: ...
+    def get_status(self, video_id: str) -> dict | None: ...
+    def update_status(self, video_id: str, status: dict) -> dict: ...
 
 
 # ---------------------------------------------------------------- Google
 
 
 def credentials_from_json(token_json: str):
+    """Dùng đúng các quyền token ĐÃ được cấp. Truyền danh sách SCOPES mới hơn (vd. sau khi app thêm quyền) sẽ làm Google
+    từ chối làm mới token (invalid_scope) và kênh mất kết nối."""
     from google.oauth2.credentials import Credentials
 
-    return Credentials.from_authorized_user_info(json.loads(token_json), SCOPES)
+    info = json.loads(token_json)
+    return Credentials.from_authorized_user_info(info, info.get("scopes") or None)
 
 
 class GoogleYouTubeClient:
@@ -147,6 +155,16 @@ class GoogleYouTubeClient:
         items = r.get("items", [])
         return items[0]["status"]["privacyStatus"] if items else None
 
+    def get_status(self, video_id: str) -> dict | None:
+        r = self._exec(self.yt.videos().list(part="status", id=video_id))
+        items = r.get("items", [])
+        return dict(items[0]["status"]) if items else None
+
+    def update_status(self, video_id: str, status: dict) -> dict:
+        """Chỉ được gọi từ services/youtube/publish.py (tự công khai có hẹn giờ) và force_private."""
+        r = self._exec(self.yt.videos().update(part="status", body={"id": video_id, "status": status}))
+        return dict(r.get("status") or {})
+
     def force_private(self, video_id: str) -> None:
         """Chỉ dùng theo hướng an toàn: kéo về private nếu readback khác private."""
         r = self._exec(self.yt.videos().list(part="status", id=video_id))
@@ -230,6 +248,27 @@ class DemoYouTubeClient:
         db[video_id]["privacyStatus"] = PRIVATE
         self._save(db)
         self.report_privacy = None
+
+    def get_status(self, video_id: str) -> dict | None:
+        v = self._db().get(video_id)
+        if not v:
+            return None
+        return {"privacyStatus": self.report_privacy or v["privacyStatus"], "uploadStatus": "processed", "license": "youtube",
+                "embeddable": True, "containsSyntheticMedia": True, "selfDeclaredMadeForKids": False}
+
+    def update_status(self, video_id: str, status: dict) -> dict:
+        db = self._db()
+        if db[video_id].get("locked_private"):  # mô phỏng project chưa audit: YouTube giữ nguyên riêng tư
+            return {**status, "privacyStatus": PRIVATE}
+        db[video_id]["privacyStatus"] = status["privacyStatus"]
+        self._save(db)
+        return status
+
+    def simulate_locked_private(self, video_id: str) -> None:
+        """Chỉ dùng trong test: mô phỏng YouTube khoá video riêng tư (project API chưa qua audit)."""
+        db = self._db()
+        db[video_id]["locked_private"] = True
+        self._save(db)
 
     def simulate_owner_published(self, video_id: str) -> None:
         """Chỉ dùng trong demo/test: mô phỏng CHỦ KÊNH tự công khai trên Studio."""

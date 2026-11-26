@@ -99,7 +99,7 @@ def ser_story(st: Story) -> dict:
                                         "editorial_notes", "state", "resume_state", "mode", "autopilot_authorized",
                                         "upload_requested_by", "script_approved_by", "channel_id", "current_script_version_id",
                                         "current_render_id", "last_error", "blockers", "is_demo", "created_at", "updated_at",
-                                        "freshness_checked_at")}
+                                        "freshness_checked_at", "publish_after", "publish_hold", "auto_heal_attempts")}
 
 
 def story_detail(db: Session, st: Story) -> dict:
@@ -366,6 +366,22 @@ def _submit(st: Story, actor: Actor, stop_at: str | None = None) -> dict:
     from ..workers.executor import submit_pipeline
 
     return {"story_id": st.id, "submitted": submit_pipeline(st.id, actor.name, stop_at), "state": st.state}
+
+
+class HoldIn(BaseModel):
+    hold: bool = True
+
+
+@app.post("/api/stories/{sid}/hold")
+def hold_story(sid: str, body: HoldIn = Body(default=HoldIn()), db: Session = Depends(get_db),
+               actor: Actor = Depends(current_actor)):
+    """Dừng (hoặc cho phép lại) việc TỰ công khai có hẹn giờ của một video. Không có endpoint nào công khai trực tiếp."""
+    from ..workers.autoops import hold
+
+    st = get_story(db, sid)
+    if not body.hold and actor.role != "owner":
+        raise HTTPException(403, "Chỉ chủ kênh được cho phép tự công khai lại")
+    return hold(db, st, actor.name, body.hold)
 
 
 @app.post("/api/stories/{sid}/run")
@@ -748,7 +764,10 @@ def get_settings_api(db: Session = Depends(get_db), actor: Actor = Depends(curre
     vals["voice"] = vals["voice"] or s.vieneu_voice
     return vals | {"mode": s.app_mode, "scan_interval_hours": s.scan_interval_hours, "max_videos_per_week": s.max_videos_per_week,
                    "score_autopilot": s.score_autopilot, "duration_range": [s.duration_min_seconds, s.duration_max_seconds],
-                   "privacy": "private (cố định)"}
+                   "full_auto": s.full_auto, "auto_publish_delay_minutes": s.auto_publish_delay_minutes,
+                   "auto_heal_max_attempts": s.auto_heal_max_attempts,
+                   "privacy": (f"tải lên RIÊNG TƯ, tự công khai sau {s.auto_publish_delay_minutes} phút nếu không bấm Dừng"
+                               if s.full_auto and s.auto_publish_delay_minutes > 0 else "private (chủ kênh tự công khai)")}
 
 
 @app.patch("/api/settings")

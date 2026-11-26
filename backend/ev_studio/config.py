@@ -78,6 +78,11 @@ class Settings(BaseSettings):
     agent_master_rate: float = 0.95
     agent_master_audit_rate: float = 0.0
 
+    # --- Tự động hoàn toàn: một công tắc cho Autopilot + lịch quét + tự sửa lỗi + tự công khai có hẹn giờ ---
+    full_auto: bool = False
+    auto_publish_delay_minutes: int = 120  # 0 = không tự công khai (vẫn giữ riêng tư như cũ)
+    auto_heal_max_attempts: int = 2  # tự chạy lại video lỗi tối đa N lần, vẫn hỏng thì bỏ tin đó
+
     # --- Ban Tăng trưởng: theo dõi kênh bằng YouTube Analytics, chạy theo KPI doanh thu tháng ---
     kpi_monthly_revenue_usd: float = 0.0  # 0 = chưa đặt KPI. Doanh thu quảng cáo YouTube (estimatedAdRevenue), USD
     growth_auto_apply: bool = True  # Ban Tăng trưởng tự chỉnh số video/ngày + tỷ trọng trụ cột (trong trần ngân sách)

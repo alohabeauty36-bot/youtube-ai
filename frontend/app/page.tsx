@@ -18,20 +18,31 @@ export default function Dashboard() {
       <h2>Bảng điều khiển</h2>
       <DemoBanner show={data?.mode === "demo"} />
       <ErrorBox error={error || err} />
+      <Card title="Tự động hoàn toàn" right={<Badge kind={st?.full_auto ? "ok" : "info"}>{st?.full_auto ? "Đang bật" : "Đang tắt"}</Badge>}>
+        <div className="row">
+          <span className="small">{st?.full_auto
+            ? <>App tự quét tin, tự chọn tin, tự làm video, tự sửa lỗi (không được thì bỏ tin), tải lên RIÊNG TƯ và {st?.auto_publish_delay_minutes > 0
+              ? <>tự công khai sau <b>{st.auto_publish_delay_minutes} phút</b> nếu bạn không bấm ⛔ Dừng trên Telegram</> : <>giữ riêng tư để bạn tự công khai</>}. Luôn trong trần ngân sách AI.</>
+            : <>Bật để app tự làm mọi việc: quét tin, chọn tin, làm video, tự sửa lỗi, tải lên và tự công khai sau thời gian chờ (bạn vẫn có nút Dừng).</>}</span>
+          <span className="right"><button className={st?.full_auto ? "" : "primary"} disabled={!!busy}
+            onClick={() => act("full", () => api("/api/config", { method: "PUT", json: { values: { full_auto: !st?.full_auto } } }))}>
+            {st?.full_auto ? "Tắt" : "Bật Tự động hoàn toàn"}</button></span>
+        </div>
+      </Card>
       <div className="grid g4">
         <Card title="Kênh đích"><div className="kpi small">{data?.channel || <span className="muted">Chưa chọn</span>}</div>
           <Link href="/settings">Đổi kênh / kết nối OAuth →</Link></Card>
         <Card title="Autopilot Private">
-          <div className="row"><Badge kind={st?.autopilot_enabled ? "ok" : "info"}>{st?.autopilot_enabled ? "Đang bật" : "Đang tắt"}</Badge>
-            <button disabled={!!busy} onClick={() => act("ap", () => api("/api/settings", { method: "PATCH", json: { autopilot_enabled: !st?.autopilot_enabled } }))}>
-              {st?.autopilot_enabled ? "Tắt" : "Bật"}</button></div>
+          <div className="row"><Badge kind={st?.autopilot_enabled || st?.full_auto ? "ok" : "info"}>{st?.full_auto ? "Bật (Tự động hoàn toàn)" : st?.autopilot_enabled ? "Đang bật" : "Đang tắt"}</Badge>
+            {!st?.full_auto && <button disabled={!!busy} onClick={() => act("ap", () => api("/api/settings", { method: "PATCH", json: { autopilot_enabled: !st?.autopilot_enabled } }))}>
+              {st?.autopilot_enabled ? "Tắt" : "Bật"}</button>}</div>
           <p className="small muted">Tự chọn tin ≥ {st?.score_autopilot}/100 đủ chứng cứ → dựng → tải lên RIÊNG TƯ → Telegram. Tối đa {bud.data?.stories_per_day ?? "—"} tin/ngày, luôn trong trần ngân sách.</p>
-          <button disabled={!!busy || !st?.autopilot_enabled} onClick={() => act("tick", () => api("/api/autopilot/tick", { method: "POST" }))}>Chạy 1 vòng ngay</button>
+          <button disabled={!!busy || !(st?.autopilot_enabled || st?.full_auto)} onClick={() => act("tick", () => api("/api/autopilot/tick", { method: "POST" }))}>Chạy 1 vòng ngay</button>
         </Card>
         <Card title="Lịch quét tin">
-          <div className="row"><Badge kind={st?.scan_schedule_enabled ? "ok" : "info"}>{st?.scan_schedule_enabled ? `Mỗi ${st?.scan_interval_hours}h` : "Đang tắt"}</Badge>
-            <button disabled={!!busy} onClick={() => act("sch", () => api("/api/settings", { method: "PATCH", json: { scan_schedule_enabled: !st?.scan_schedule_enabled } }))}>
-              {st?.scan_schedule_enabled ? "Tắt" : "Bật"}</button></div>
+          <div className="row"><Badge kind={st?.scan_schedule_enabled || st?.full_auto ? "ok" : "info"}>{st?.scan_schedule_enabled || st?.full_auto ? `Mỗi ${st?.scan_interval_hours}h` : "Đang tắt"}</Badge>
+            {!st?.full_auto && <button disabled={!!busy} onClick={() => act("sch", () => api("/api/settings", { method: "PATCH", json: { scan_schedule_enabled: !st?.scan_schedule_enabled } }))}>
+              {st?.scan_schedule_enabled ? "Tắt" : "Bật"}</button>}</div>
           <button style={{ marginTop: 8 }} disabled={!!busy} onClick={() => act("scan", async () => { const r = await api("/api/sources/scan", { method: "POST" }); setScan(r); return null; })}>
             {busy === "scan" ? "Đang quét…" : "Quét tin ngay"}</button>
         </Card>

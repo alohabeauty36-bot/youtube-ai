@@ -23,8 +23,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <Link href="/errors">Nhật ký lỗi</Link>
               <Link href="/settings">Thiết lập & tài khoản</Link>
             </nav>
-            <div className="lock">🔒 Mọi video được tải lên YouTube ở trạng thái <b>RIÊNG TƯ</b>. Ứng dụng không có chức năng công khai —
-              chủ kênh tự đổi trạng thái trên YouTube Studio.</div>
+            <div className="lock">🔒 Mọi video được tải lên YouTube ở trạng thái <b>RIÊNG TƯ</b>. Chỉ khi bạn bật <b>Tự động hoàn toàn</b>, app mới tự công khai sau thời gian chờ, và bạn luôn có nút <b>⛔ Dừng</b> trên Telegram.</div>
           </aside>
           <main>{children}</main>
         </div>
