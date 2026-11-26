@@ -80,6 +80,35 @@ def test_pexels(s: Settings, client: httpx.Client | None = None) -> dict:
     return _fail(f"Pexels trả HTTP {r.status_code} — kiểm tra key")
 
 
+def test_pixabay(s: Settings, client: httpx.Client | None = None) -> dict:
+    if not s.pixabay_api_key:
+        return _fail("Chưa nhập Pixabay API key — đăng ký miễn phí ở pixabay.com rồi mở pixabay.com/api/docs để lấy key")
+    from .media.finders import PixabayClient  # không lưu đệm: phép thử phải gọi thật để biết key còn đúng
+    from ..errors import RetryableError
+
+    api = PixabayClient(s.pixabay_api_key.get_secret_value(), None, client)
+    try:
+        v = api.get("videos/", {"q": "electric car", "per_page": 3, "safesearch": "true"})
+        img = api.get("", {"q": "electric car", "per_page": 3, "image_type": "photo", "safesearch": "true"})
+    except RetryableError as e:
+        return _fail(str(e))
+    if "totalHits" not in v:
+        return _fail("Pixabay từ chối key — kiểm tra lại key ở pixabay.com/api/docs")
+    return _ok(f"Pixabay hoạt động: {v.get('totalHits', 0)} video và {img.get('totalHits', 0)} ảnh cho 'electric car'.")
+
+
+def test_media(s: Settings, client: httpx.Client | None = None) -> dict:
+    """Nút Kiểm tra ở tab Kho tư liệu: Pixabay (chính) + Pexels nếu có key cũ."""
+    pix = test_pixabay(s, client)
+    if not s.pexels_api_key:
+        if pix["ok"]:
+            return pix
+        return _fail(pix["message"] + " (Pexels đã dừng cấp key mới, nên Pixabay là nguồn video chính.)")
+    pex = test_pexels(s, client)
+    msg = f"{'✅' if pix['ok'] else '⛔'} {pix['message']}  {'✅' if pex['ok'] else '⛔'} {pex['message']}"
+    return {"ok": pix["ok"] or pex["ok"], "message": msg if pix["ok"] or pex["ok"] else redact(msg)}
+
+
 def test_tts(s: Settings, client: httpx.Client | None = None) -> dict:
     """Đọc thử MỘT câu bằng đúng bộ đọc mà pipeline sẽ dùng → lộ ngay lỗi thật (chưa cài, thiếu model, sai tên giọng…)."""
     import time
@@ -176,4 +205,4 @@ def test_ai_images(s: Settings, generators: dict | None = None) -> dict:
     return (_ok if good else _fail)(msg, providers=results)
 
 
-TESTS = {"ai_images": test_ai_images, "anthropic": test_anthropic, "telegram": test_telegram, "pexels": test_pexels, "tts": test_tts, "youtube": test_youtube}
+TESTS = {"ai_images": test_ai_images, "anthropic": test_anthropic, "telegram": test_telegram, "pexels": test_pexels, "pixabay": test_pixabay, "media": test_media, "tts": test_tts, "youtube": test_youtube}

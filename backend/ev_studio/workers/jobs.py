@@ -356,8 +356,10 @@ def media_job(session: Session, story: Story, p: Providers) -> dict:
                 take(fa, "__library__")
             continue
         for q in queries:
+            if getattr(finder, "fill_only", False) and by_query.get(q):
+                continue  # nguồn ảnh phụ: chỉ tìm cho từ khoá chưa có video/ảnh (tiết kiệm lượt gọi API)
             try:
-                found = finder.search(q, 2 if finder.name == "pexels_video" else 1)
+                found = finder.search(q, 2 if finder.name.endswith("_video") else 1)
             except RetryableError as e:  # hết lượt/mất mạng: giữ tư liệu đã có, phần còn lại dùng đồ họa
                 errors.append(f"{finder.name}: {e}")
                 log.warning("Tìm tư liệu '%s' qua %s dừng: %s", q, finder.name, e, extra={"evcs_story_id": story.id})

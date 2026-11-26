@@ -112,7 +112,8 @@ class Settings(BaseSettings):
     vieneu_model_version: str = "vieneu-3.8.5-v3turbo"
 
     # --- media ---
-    pexels_api_key: SecretStr | None = None
+    pixabay_api_key: SecretStr | None = None  # nguồn video/ảnh chính (key miễn phí, cấp ngay)
+    pexels_api_key: SecretStr | None = None  # chỉ dùng key cũ: Pexels dừng cấp key mới từ ~30/9/2026
     wikimedia_enabled: bool = True
     wikimedia_user_agent: str = "EVCreatorStudio/1.0 (contact: owner@example.invalid)"
 

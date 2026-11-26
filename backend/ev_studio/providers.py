@@ -69,13 +69,22 @@ def get_telegram(settings: Settings | None = None):
 
 
 def get_asset_finders(settings: Settings | None = None) -> list:
-    from .services.media.finders import OwnLibraryFinder, PexelsFinder, PexelsVideoFinder, WikimediaFinder
+    from .services.media.finders import (OwnLibraryFinder, PexelsFinder, PexelsVideoFinder, PixabayClient,
+                                         PixabayImageFinder, PixabayVideoFinder, WikimediaFinder)
 
     s = settings or get_settings()
     finders: list = [OwnLibraryFinder(s.media_library_dir)]
     if not s.is_demo:
+        pixabay = (PixabayClient(s.pixabay_api_key.get_secret_value(), s.artifacts_dir / "_stock_cache" / "pixabay_api")
+                   if s.pixabay_api_key else None)
+        # video B-roll trước (Pixabay, rồi Pexels nếu còn key cũ — Pexels đã dừng cấp key mới từ 9/2026)
+        if pixabay:
+            finders.append(PixabayVideoFinder(pixabay))
         if s.pexels_api_key:
-            finders.append(PexelsVideoFinder(s.pexels_api_key.get_secret_value()))  # video B-roll trước
+            finders.append(PexelsVideoFinder(s.pexels_api_key.get_secret_value()))
+        if pixabay:
+            finders.append(PixabayImageFinder(pixabay))
+        if s.pexels_api_key:
             finders.append(PexelsFinder(s.pexels_api_key.get_secret_value()))
         if s.wikimedia_enabled:
             finders.append(WikimediaFinder(s.wikimedia_user_agent))

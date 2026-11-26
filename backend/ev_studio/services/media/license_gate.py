@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ALLOWED_LICENSES = {
-    "cc0", "cc0 1.0", "public domain", "pd", "pdm", "pexels license",
+    "cc0", "cc0 1.0", "public domain", "pd", "pdm", "pexels license", "pixabay content license",
     "cc by 2.0", "cc by 2.5", "cc by 3.0", "cc by 4.0",
     "cc by-sa 2.0", "cc by-sa 2.5", "cc by-sa 3.0", "cc by-sa 4.0",
     "owner-provided", "licensed", "internal graphic",

@@ -46,7 +46,7 @@ Mở **Thiết lập**. Trang chia tab, mỗi tab là cấu hình của một ph
 | Giọng đọc VieNeu | `vieneu_local` (sau khi chạy `python run.py --with-tts`) hoặc `vieneu_http` + địa chỉ server GPU; chọn giọng | Kiểm tra thư viện đã cài hoặc server có phản hồi |
 | YouTube | Dán hoặc tải lên `client_secret.json` (OAuth client loại *Web application*), ID kênh đích | Kiểm tra JSON và redirect URI. Trang hiển thị sẵn URI để bạn sao chép vào Google Cloud Console |
 | Telegram | Bot token (lấy từ @BotFather) | Xác nhận bot hoạt động, liệt kê các chat vừa nhắn `/start` để bấm **Cho phép**, rồi gửi tin nhắn thử |
-| Kho tư liệu | Pexels key (tuỳ chọn), bật/tắt Wikimedia | Tìm thử một ảnh |
+| Kho tư liệu | **Pixabay key** (miễn phí), Pexels key cũ (tuỳ chọn), bật/tắt Wikimedia | Tìm thử video + ảnh |
 | Biên tập, Dựng video, Bảo mật | Thời lượng (không dưới 600 giây), ngưỡng Autopilot, preset FFmpeg, mật khẩu chủ kênh/biên tập viên | — |
 
 Sau khi nhập key, đổi **Chế độ** sang `production`, rồi bấm **Kết nối kênh YouTube** để cấp quyền và chọn đúng kênh. Nếu thiếu key, video sẽ dừng ở trạng thái `BLOCKED_BY_CREDENTIALS` kèm đường dẫn mở trang Thiết lập, chứ không lặng lẽ chuyển sang dữ liệu giả lập.
@@ -61,7 +61,7 @@ Giữ nguyên: cấu hình và key đã nhập, **sổ cái ngân sách** (tiề
 
 **Truy cập:** khi mở trên chính máy chạy ứng dụng (127.0.0.1), bạn không cần mật khẩu. Khi truy cập từ máy khác, ứng dụng yêu cầu mật khẩu chủ kênh hoặc biên tập viên. Nếu ứng dụng nằm sau reverse proxy, các request có header proxy **không** được tin là truy cập cục bộ.
 
-**Dành cho lập trình viên:** `make test` chạy 186 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8010.
+**Dành cho lập trình viên:** `make test` chạy 193 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8010.
 
 ### Windows 11
 Nên dùng WSL2 (Ubuntu) với Docker Desktop. Cách native cũng chạy được với Python 3.12, FFmpeg (gyan.dev, có libass) và `pip install vieneu` (CPU/ONNX). GPU CUDA trên Windows cần cài `torch==2.8.0` cu128 trước, theo README của VieNeu.
@@ -81,7 +81,7 @@ Một công tắc trên **Bảng điều khiển** (hoặc Thiết lập → T�
 
 ## 3d. Hình ảnh video
 - **Phòng Đạo diễn hình ảnh** (Claude Haiku, ~0,002–0,005 USD/video; không có Claude thì dùng từ điển chủ đề xe điện) lên danh sách cảnh quay: mỗi cảnh 3–9 giây có một từ khoá tiếng Anh để tìm tư liệu, một câu chữ nhấn mạnh, và loại cảnh (video nền / chữ nhấn / câu hỏi / số liệu). Số liệu trên màn hình **chỉ lấy từ claim đã xác minh** (trường value/unit), không để AI tự viết số.
-- **Tư liệu theo từng cảnh**: Pexels **Video** (B-roll) trước, rồi ảnh Pexels, Wikimedia Commons, thư viện của chủ kênh (`media_library/`, ảnh hoặc video kèm `.license.json`). Mọi tư liệu qua license gate. Clip tải về lưu ở `artifacts/_stock_cache/` để video sau dùng lại. **Cần Pexels API key** (miễn phí tại pexels.com/api) ở Thiết lập → Kho tư liệu; thiếu key thì chỉ có thư viện chủ kênh và nền đồ họa.
+- **Tư liệu theo từng cảnh**: **video B-roll Pixabay** trước (bản ngang ~1920×1080), rồi video Pexels nếu còn key cũ, ảnh Pixabay (chỉ cho từ khoá chưa có video), ảnh Pexels, Wikimedia Commons, thư viện của chủ kênh (`media_library/`, ảnh hoặc video kèm `.license.json`). Mọi tư liệu qua license gate. Clip tải về lưu ở `artifacts/_stock_cache/` để video sau dùng lại; kết quả tìm Pixabay được lưu đệm 24 giờ đúng điều khoản API. **Cần Pixabay API key** (miễn phí, cấp ngay: đăng ký pixabay.com → đăng nhập → pixabay.com/api/docs, key nằm trong mục Parameters) ở Thiết lập → tab Kho tư liệu. **Pexels đã tạm dừng cấp key mới** (từ cuối 9/2026): ai còn key cũ thì vẫn nhập được. Thiếu cả hai thì chỉ có Wikimedia, thư viện chủ kênh, ảnh AI và nền đồ họa.
 - **Dựng nhiều lớp**: nền luôn chuyển động (video B-roll, ảnh có Ken Burns 4 hướng, hoặc nền đồ họa có Ken Burns), lớp chữ trượt vào (chữ nhấn góc trên, thẻ dữ kiện có nguồn, số liệu cỡ lớn, câu hỏi), logo kênh góc trên phải, dải tối dưới đáy để phụ đề luôn rõ. Cùng một tư liệu không lặp ở cảnh liền kề.
 - **Ảnh minh họa AI** (FLUX.1 schnell): chỉ lấp những từ khoá mà kho tư liệu không có video/ảnh thật, tối đa `ai_images_per_video` (mặc định 12) ảnh/video. Nguồn `auto`: **Cloudflare Workers AI** trước (miễn phí trong hạn mức 10.000 neurons/ngày; app dừng ở `cloudflare_daily_images` = 150 ảnh/ngày), hết lượt hoặc thiếu key thì **fal.ai** (~0,003 USD/ảnh, mỗi ảnh được Ban Tài chính giữ chỗ trong trần ngân sách). Prompt bỏ tên thương hiệu/mẫu xe/số, yêu cầu không chữ, không logo, không biển số, không khuôn mặt nhận ra được; ảnh được đánh dấu AI, góc màn hình ghi "Ảnh minh họa AI", mô tả video ghi công. Cấu hình ở **Thiết lập → tab Ảnh AI (Cloudflare · fal.ai)** (nút Kiểm tra tạo thử 1 ảnh). Ảnh đã tạo lưu ở `artifacts/_ai_cache/` để dùng lại.
 - **Nhạc nền**: đặt file nhạc vào `media_library/music/` kèm `<tên file>.license.json`, ví dụ nhạc tải từ YouTube Studio → Thư viện âm thanh: `{"license_name": "YouTube Audio Library", "allowed_commercial": true, "source_url": "…", "attribution_text": "Tên bài — Tác giả"}`. Nhạc ở mức `music_volume_db` (mặc định -20 dB) và tự giảm thêm khi có giọng đọc; ghi công tự thêm vào mô tả video.
@@ -171,7 +171,7 @@ prompts/pillars/P1|P2|P3.md       hồ sơ trụ cột
 prompts/reference/…               Mục IV nguyên văn (tham khảo văn phong)
 frontend/                         Next.js 15 + TypeScript (xuất tĩnh → backend/ev_studio/web_dist, backend phục vụ)
 migrations/                       Alembic
-tests/                            186 test
+tests/                            193 test
 run.py, start.bat, start.sh       chạy bằng một lệnh
 backend/ev_studio/runtime_config.py  cấu hình API lưu mã hoá trong DB
 backend/ev_studio/agents/            Ban Tài chính (budget, pricing) + bộ não phòng ban (brain, memory, teachers, learning, writer) + Ban Tăng trưởng (growth)
@@ -196,7 +196,7 @@ backend/ev_studio/error_log.py       Nhật ký lỗi: WARNING+ của ev_studio.
   - YouTube: quota `videos.insert` dùng bucket riêng từ 11/2026, xem số hiện hành trong Google Cloud Console.
 
 ## 6. Giới hạn đã biết (trung thực)
-- Chưa chạy với credential thật (Anthropic, Google OAuth, Telegram, Pexels) và chưa có model weights VieNeu. Các adapter thật đã được viết đúng API và test bằng mock HTTP, nhưng nghiệm thu thật vẫn là **BLOCKED_BY_CREDENTIALS**.
+- Chưa chạy với credential thật (Anthropic, Google OAuth, Telegram, Pixabay, Pexels) và chưa có model weights VieNeu. Các adapter thật đã được viết đúng API và test bằng mock HTTP, nhưng nghiệm thu thật vẫn là **BLOCKED_BY_CREDENTIALS**.
 - Chưa tích hợp forced alignment tiếng Việt. Phụ đề căn theo mốc thời gian thật của từng segment TTS.
 - Chưa có vision tự kiểm tra mẫu xe trong ảnh. Ảnh gắn mẫu xe khác chủ đề tự động bị dán nhãn "minh họa"; ảnh không ghi mẫu xe cũng bị coi là minh họa.
 - Ken Burns chỉ áp dụng cho cảnh ảnh thật. Chưa trộn nhạc nền.

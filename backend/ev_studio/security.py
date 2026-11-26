@@ -75,8 +75,8 @@ _PATTERNS = [
 def _known_secrets() -> list[str]:
     s = get_settings()
     vals = []
-    for f in (s.anthropic_api_key, s.telegram_bot_token, s.pexels_api_key, s.admin_token, s.editor_token,
-              s.secret_key, s.telegram_webhook_secret):
+    for f in (s.anthropic_api_key, s.telegram_bot_token, s.pexels_api_key, s.pixabay_api_key, s.cloudflare_api_token,
+              s.fal_api_key, s.admin_token, s.editor_token, s.secret_key, s.telegram_webhook_secret):
         if f is not None:
             v = f.get_secret_value()
             if len(v) >= 6:

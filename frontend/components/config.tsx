@@ -17,7 +17,7 @@ const TAB_META: Record<string, { label: string; section: string }> = {
   youtube: { label: "YouTube", section: "Kết nối dịch vụ" },
   telegram: { label: "Telegram", section: "Kết nối dịch vụ" },
   tts: { label: "Giọng đọc VieNeu", section: "Kết nối dịch vụ" },
-  media: { label: "Kho tư liệu (Pexels)", section: "Kết nối dịch vụ" },
+  media: { label: "Kho tư liệu (Pixabay)", section: "Kết nối dịch vụ" },
   ai_images: { label: "Ảnh AI (Cloudflare · fal.ai)", section: "Kết nối dịch vụ" },
   editorial: { label: "Biên tập & thời lượng", section: "Sản xuất video" },
   render: { label: "Dựng video & job", section: "Sản xuất video" },
@@ -30,12 +30,12 @@ const TAB_META: Record<string, { label: string; section: string }> = {
 };
 // trạng thái kết nối (từ /api/system/integrations) hiện thành chấm màu cạnh tên tab
 const STATUS_FOR: Record<string, string[]> = { anthropic: ["anthropic"], youtube: ["youtube"], telegram: ["telegram"], tts: ["tts"],
-  media: ["pexels"], ai_images: ["cloudflare", "fal"] };
+  media: ["pixabay", "pexels"], ai_images: ["cloudflare", "fal"] };
 const statusKind = (v?: string) => v === "CONFIGURED" ? "ok" : v === "DEMO" || v === "OFF" ? "info" : v === "NOT_SET" ? "warn" : v ? "bad" : "";
 const STATUS_TEXT: Record<string, string> = { CONFIGURED: "đã kết nối", DEMO: "DEMO", OFF: "đang tắt", NOT_SET: "chưa nhập key",
   BLOCKED_BY_CREDENTIALS: "thiếu key" };
 
-const TEST_FOR: Record<string, string> = { anthropic: "anthropic", tts: "tts", youtube: "youtube", telegram: "telegram", media: "pexels", ai_images: "ai_images" };
+const TEST_FOR: Record<string, string> = { anthropic: "anthropic", tts: "tts", youtube: "youtube", telegram: "telegram", media: "media", ai_images: "ai_images" };
 const SOURCE: Record<string, [string, any]> = { ui: ["đã lưu trong giao diện", "ok"], env: ["từ file .env", "info"], default: ["mặc định", "info"] };
 type DemoSummary = { stories: number; news: number; sources: number; channels: number; essays: number; cost_rows: number;
   running_stories: number; has_files: boolean; total: number };
@@ -160,6 +160,9 @@ export function ConfigPanel({ onChanged, extras = {}, extraTabs = [], status, in
             {g === "youtube" && <div className="small" style={{ marginBottom: 8 }}>Authorized redirect URI cần thêm vào OAuth client:
               <div className="row"><code style={{ background: "#0d1626", padding: "3px 6px", borderRadius: 6 }}>{cfg.oauth_redirect_uri}</code>
                 <button onClick={() => navigator.clipboard?.writeText(cfg.oauth_redirect_uri)}>Sao chép</button></div></div>}
+            {g === "media" && <div className="hint small" style={{ marginBottom: 8 }}><b>Pixabay</b> là nguồn video B-roll và ảnh chính
+              (miễn phí, dùng thương mại được): đăng ký ở pixabay.com, đăng nhập rồi mở <b>pixabay.com/api/docs</b>, key hiện sẵn trong mục
+              “Parameters”. <b>Pexels</b> đã tạm dừng cấp key mới, chỉ nhập nếu bạn có key cũ.</div>}
             {g === "ai_images" && <div className="hint small" style={{ marginBottom: 8 }}>Ảnh AI chỉ dùng khi không tìm được video/ảnh thật phù hợp, luôn khổ 16:9 và gắn nhãn
               “Ảnh minh họa AI”. Thứ tự: <b>Cloudflare Workers AI</b> (miễn phí ~150 ảnh/ngày) → <b>fal.ai</b> (trả phí, Ban Tài chính tính vào ngân sách).
               Cloudflare: dash.cloudflare.com → Account ID ở trang tổng quan; tạo API token mẫu “Workers AI”.</div>}
