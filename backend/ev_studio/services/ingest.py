@@ -158,7 +158,7 @@ def ingest_articles(session: Session, articles: list[RawArticle], writer=None, a
         # 4. chấm điểm
         pillar, hits = ranker.classify_pillar(a.title, a.raw_excerpt)
         key = [c for c in checked if c.get("is_key", True) and c["status"] != "inference"]
-        verified_key = [c for c in key if c["status"] == "verified"]
+        verified_key = [c for c in key if fc.is_fact(c["status"], s)]  # chế độ phân tích: tính cả tin "đã đưa tin"
         contested = [c for c in checked if c["status"] == "contested"]
         novelty = max([ranker.jaccard(a.title, t) for t in recent_topics] or [0])
         has_cond = any(w in ranker.strip_accents(a.raw_excerpt) for w in ("chi ap dung", "dieu kien", "den het", "khong ap dung", "hieu luc"))
@@ -203,6 +203,36 @@ def ingest_articles(session: Session, articles: list[RawArticle], writer=None, a
     return stats
 
 
+def reapply_fact_mode(session: Session, days: int = 14) -> int:
+    """Áp lại chế độ xử lý tin cho tin đã quét (vd. vừa chuyển sang chế độ phân tích): claim có nguồn + trích dẫn khớp
+    nhưng chưa đủ nguồn đối chiếu → 'reported', và tin đủ điểm được đưa lên shortlist. Không bao giờ hạ claim đã verified
+    thủ công hay claim tranh cãi. Trả số tin được đưa lên shortlist."""
+    s = get_settings()
+    analysis = fc.analysis_mode(s)
+    since = now() - timedelta(days=days)
+    promoted = 0
+    items = session.scalars(select(NewsItem).where(NewsItem.status.in_(("research", "shortlist")), NewsItem.fetched_at >= since))
+    for n in items:
+        refs = {x["source_id"]: fc.SourceRef(x["source_id"], x["url"], x.get("publisher") or "", int(x.get("trust_tier") or 3),
+                                             x.get("published_at"), x.get("text") or (n.raw_excerpt if x["source_id"] == "s1" else None))
+                for x in (n.supporting_sources or [])}
+        for c in n.claims:
+            if c.status not in ("unverified", "reported") or (c.verification_reason or "").startswith("Biên tập viên"):
+                continue
+            st, why = fc.verify_claim({"status": c.status, "source_ids": c.source_ids or [], "source_url": c.source_url,
+                                       "evidence_excerpt": c.evidence_excerpt, "claim_type": c.claim_type}, refs, analysis)
+            if st in ("unverified", "reported") and st != c.status:
+                c.status, c.verification_reason = st, why
+        key_ok = any(fc.is_fact(c.status, s) and c.is_key for c in n.claims)
+        if analysis and n.status == "research" and key_ok and (n.score or 0) >= s.score_shortlist:
+            n.status = "shortlist"
+            promoted += 1
+        elif not analysis and n.status == "shortlist" and not key_ok:
+            n.status = "research"
+    session.flush()
+    return promoted
+
+
 def _cross_item_conflicts(session: Session, created: list[NewsItem]) -> None:
     """Hai bài khác nhau đưa số liệu khác nhau cho cùng (loại claim, chủ thể) → contested ở cả hai."""
     recent = list(session.scalars(select(Claim).join(NewsItem).where(NewsItem.status != "duplicate", Claim.subject.is_not(None))))
@@ -233,6 +263,9 @@ def run_scan(session: Session, writer=None, actor: str = "system", warnings: lis
             warns.append(f"Chưa có nguồn RSS nào nên đã thêm {added} nguồn mặc định (VnExpress, Tuổi Trẻ, Thanh Niên, Dân trí). "
                          "Xem/chặn/thêm nguồn ở Thiết lập → Nguồn tin.")
     total: dict = {"fetched": 0, "created": 0, "duplicates": 0, "blocked": 0}
+    promoted = reapply_fact_mode(session)  # tin cũ theo chế độ xử lý tin hiện tại (vd. vừa bật chế độ phân tích)
+    if promoted:
+        total["promoted_by_fact_mode"] = promoted
     per_source: list[dict] = []
     pairs = adapters_for(session)
     if not pairs:

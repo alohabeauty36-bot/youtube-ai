@@ -40,7 +40,13 @@ def sentence_count(p: str) -> int:
 
 
 def run_script_qa(out: dict, *, pack_claims: list[dict], source_texts: list[str], recent_scripts: list[str],
-                  supported_phrases_text: str = "", is_demo: bool = False) -> QAResult:
+                  supported_phrases_text: str = "", is_demo: bool = False, analysis: bool | None = None,
+                  publishers: list[str] | None = None) -> QAResult:
+    from .fact_checker import analysis_mode, has_attribution
+
+    if analysis is None:
+        analysis = analysis_mode()
+    facts = ("verified", "reported") if analysis else ("verified",)
     r = QAResult(passed=True)
     spoken: str = out.get("spoken_script", "")
     r.add("spoken_script không rỗng", bool(spoken.strip()), "Claude trả unresolved_questions" if not spoken.strip() else "")
@@ -63,16 +69,21 @@ def run_script_qa(out: dict, *, pack_claims: list[dict], source_texts: list[str]
         c = by_key.get(entry["claim_id"])
         if c is None:
             bad.append(f"{entry['claim_id']} không có trong ResearchPack")
-        elif c["status"] not in ("verified", "inference"):
+        elif c["status"] not in (*facts, "inference"):
             bad.append(f"{entry['claim_id']} có status {c['status']}")
-        elif not set(entry.get("source_ids", [])) & set(c.get("source_ids", [])) and c["status"] == "verified":
+        elif not set(entry.get("source_ids", [])) & set(c.get("source_ids", [])) and c["status"] in facts:
             bad.append(f"{entry['claim_id']} gắn source_id sai")
-    r.add("Claim map chỉ dùng claim đã xác minh", not bad, "; ".join(bad))
-    verified_keys = {c["claim_key"] for c in pack_claims if c["status"] == "verified" and c.get("is_key", True)}
+    r.add("Claim map chỉ dùng claim đã xác minh" if not analysis else "Claim map chỉ dùng claim có nguồn", not bad, "; ".join(bad))
+    verified_keys = {c["claim_key"] for c in pack_claims if c["status"] in facts and c.get("is_key", True)}
     mapped = {e["claim_id"] for e in out.get("editorial_claim_map", [])}
     r.add("Có ít nhất một claim trọng yếu được dẫn", bool(verified_keys & mapped), f"mapped={sorted(mapped)}")
+    if analysis:  # tin mới có một báo đưa: câu dùng nó phải ghi nguồn ("theo <báo>")
+        no_attr = [e["claim_id"] for e in out.get("editorial_claim_map", [])
+                   if by_key.get(e["claim_id"], {}).get("status") == "reported"
+                   and not has_attribution(e.get("relevant_script_excerpt", ""), publishers or [])]
+        r.add("Tin chưa xác minh được ghi rõ nguồn (\"theo <báo>\")", not no_attr, ",".join(no_attr))
     for e in out.get("production_notes", {}).get("key_on_screen_facts", []):
-        if e["claim_id"] not in by_key or by_key[e["claim_id"]]["status"] != "verified":
+        if e["claim_id"] not in by_key or by_key[e["claim_id"]]["status"] not in facts:
             r.add("Dữ kiện trên màn hình có claim verified", False, e["claim_id"])
             break
     # claim bị cấm (unverified/contested) không được nhắc tới

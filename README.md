@@ -61,18 +61,28 @@ Giữ nguyên: cấu hình và key đã nhập, **sổ cái ngân sách** (tiề
 
 **Truy cập:** khi mở trên chính máy chạy ứng dụng (127.0.0.1), bạn không cần mật khẩu. Khi truy cập từ máy khác, ứng dụng yêu cầu mật khẩu chủ kênh hoặc biên tập viên. Nếu ứng dụng nằm sau reverse proxy, các request có header proxy **không** được tin là truy cập cục bộ.
 
-**Dành cho lập trình viên:** `make test` chạy 198 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8010.
+**Dành cho lập trình viên:** `make test` chạy 201 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8010.
 
 ### Windows 11
 Nên dùng WSL2 (Ubuntu) với Docker Desktop. Cách native cũng chạy được với Python 3.12, FFmpeg (gyan.dev, có libass) và `pip install vieneu` (CPU/ONNX). GPU CUDA trên Windows cần cài `torch==2.8.0` cu128 trước, theo README của VieNeu.
 
 ## 3. Hai chế độ
 - **MANUAL:** chủ kênh chọn tin ở trang Săn tin. Pipeline dừng ở *Bản nháp kịch bản* để chờ duyệt, rồi dừng ở *Sẵn sàng tải RIÊNG TƯ* để chờ chủ kênh tick xác nhận và bấm upload.
-- **AUTOPILOT_PRIVATE** (bật trong Settings): tự chọn tin có điểm ≥ 80/100, mọi claim trọng yếu đã xác minh, tối đa 3 tin/ngày và chỉ khi Ban Tài chính còn đủ ngân sách. Pipeline chạy đến upload RIÊNG TƯ và Telegram, nhưng **dừng và chuyển sang `NEEDS_REVIEW`** nếu thiếu nguồn, claim đang tranh cãi, sai thời lượng (dưới 10 phút hoặc quá dài) sau 3 lần viết lại, QA không đạt, sai kênh, hoặc thiếu credential (`BLOCKED_BY_CREDENTIALS`).
+- **AUTOPILOT_PRIVATE** (bật trong Settings): tự chọn tin có điểm ≥ 80/100 và có ít nhất một dữ kiện trọng yếu có nguồn (xem **Chế độ phân tích** bên dưới), tối đa 3 tin/ngày và chỉ khi Ban Tài chính còn đủ ngân sách. Pipeline chạy đến upload RIÊNG TƯ và Telegram, nhưng **dừng và chuyển sang `NEEDS_REVIEW`** nếu thiếu nguồn (ở chế độ chặt: cả khi claim đang tranh cãi), sai thời lượng (dưới 10 phút hoặc quá dài) sau 3 lần viết lại, QA không đạt, sai kênh, hoặc thiếu credential (`BLOCKED_BY_CREDENTIALS`).
 
 ## 3c. Tự động hoàn toàn
 Một công tắc trên **Bảng điều khiển** (hoặc Thiết lập → Tự động hoàn toàn). Khi bật, mỗi 10 phút app tự làm:
-- **Quét tin và Autopilot**: lịch quét và Autopilot được coi là đang bật. Thiếu tin ≥ 80 điểm thì lấy tin trong shortlist (≥ 75 điểm), vẫn bắt buộc có claim trọng yếu đã xác minh. Số video/ngày theo Ban Tăng trưởng, luôn trong trần ngân sách AI.
+- **Quét tin và Autopilot**: lịch quét và Autopilot được coi là đang bật. Thiếu tin ≥ 80 điểm thì lấy tin trong shortlist (≥ 75 điểm), vẫn bắt buộc có dữ kiện trọng yếu có nguồn. Số video/ngày theo Ban Tăng trưởng, luôn trong trần ngân sách AI.
+
+### Chế độ phân tích (mặc định từ 27/11/2026)
+
+Thiết lập → tab **Biên tập & thời lượng** → **Cách xử lý tin chưa xác minh**:
+
+- **analysis** (mặc định): video là **bài phân tích/bình luận tin báo chí đã đăng**, không khẳng định tin đó là sự thật. Thông tin mới có **một báo** đưa (chưa có nguồn thứ hai) có trạng thái **"đã đưa tin"** (`reported`) và **được dùng**, với điều kiện câu nói phải ghi nguồn ngay trong câu ("Theo VnExpress, …", "Tuổi Trẻ đưa tin…"). Script QA chặn câu dùng tin chưa xác minh mà không ghi nguồn. Tin có các báo đưa số khác nhau không còn làm dừng video; số liệu đó chỉ không được nói như dữ kiện. Mô tả video có thêm dòng: video phân tích dựa trên thông tin các báo đã đăng, một số chưa được nguồn thứ hai xác nhận.
+- **Không bịa (ở cả hai chế độ)**: thông tin không có nguồn, hoặc trích dẫn không có trong bài báo gốc, bị loại. Con số, trích dẫn, tên người, ngày tháng chỉ lấy từ hồ sơ tư liệu; nhận định phải nói rõ là nhận định.
+- **strict**: như trước: chỉ dùng thông tin có nguồn chính thức hoặc ≥ 2 báo uy tín xác nhận; tin chưa xác minh/tranh cãi chặn dựng và tải lên.
+
+Đổi chế độ xong, lần quét tin hoặc lượt Autopilot kế tiếp tự xếp lại tin trong 14 ngày gần nhất theo chế độ mới.
 - **Tự sửa lỗi**: video bị dừng (`NEEDS_REVIEW`, `FAILED_*`) được chạy lại tối đa `auto_heal_max_attempts` lần (mặc định 2; kịch bản trượt QA thì viết bản mới). Vẫn hỏng → **bỏ tin đó** (`REJECTED`, ghi lý do) để Autopilot chọn tin khác. Không đụng video dừng vì hết ngân sách (đợi sang ngày mới) hoặc thiếu key/OAuth (chủ kênh phải sửa).
 - **Tự công khai có hẹn giờ** (`auto_publish_delay_minutes`, mặc định 120; 0 = không tự công khai): tin nhắn Telegram ghi giờ công khai và có nút **⛔ Dừng tự công khai**. Ngay trước giờ hẹn, app kiểm chứng lại claim và hạn hiệu lực, kiểm tra Media QA, độ dài ≥ 10 phút, đã báo Telegram. Không đạt → giữ riêng tư và nhắn lý do. Đạt → `videos.update` sang public, đọc lại, chuyển `PUBLISHED_AUTO`, nhắn link.
 - **Cần quyền mới**: `youtube.force-ssl` (đổi trạng thái video). Bấm **Kết nối kênh YouTube** lại sau khi cập nhật.
@@ -171,7 +181,7 @@ prompts/pillars/P1|P2|P3.md       hồ sơ trụ cột
 prompts/reference/…               Mục IV nguyên văn (tham khảo văn phong)
 frontend/                         Next.js 15 + TypeScript (xuất tĩnh → backend/ev_studio/web_dist, backend phục vụ)
 migrations/                       Alembic
-tests/                            198 test
+tests/                            201 test
 run.py, start.bat, start.sh       chạy bằng một lệnh
 backend/ev_studio/runtime_config.py  cấu hình API lưu mã hoá trong DB
 backend/ev_studio/agents/            Ban Tài chính (budget, pricing) + bộ não phòng ban (brain, memory, teachers, learning, writer) + Ban Tăng trưởng (growth)

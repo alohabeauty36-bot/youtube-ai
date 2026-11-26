@@ -112,6 +112,8 @@ class Settings(BaseSettings):
     vieneu_model_version: str = "vieneu-3.8.5-v3turbo"
 
     # --- media ---
+    # analysis: bài phân tích tin đã đăng (tin mới có 1 báo đưa vẫn làm được, phải ghi "theo <báo>"); strict: chỉ claim đã xác minh
+    fact_mode: Literal["analysis", "strict"] = "analysis"
     pixabay_api_key: SecretStr | None = None  # nguồn video/ảnh chính (key miễn phí, cấp ngay)
     pexels_api_key: SecretStr | None = None  # chỉ dùng key cũ: Pexels dừng cấp key mới từ ~30/9/2026
     wikimedia_enabled: bool = True

@@ -62,7 +62,7 @@ export default function News() {
             </div>
             <b className="small">Claims</b>
             {n.claims.map((c: any) => <div key={c.id} className={`claim ${c.status}`}>
-              <div className="row"><b>{c.claim_key}</b><Badge kind={c.status === "verified" ? "ok" : c.status === "inference" ? "warn" : "bad"}>{c.status}</Badge>
+              <div className="row"><b>{c.claim_key}</b><Badge kind={c.status === "verified" ? "ok" : c.status === "inference" || c.status === "reported" ? "warn" : "bad"}>{c.status === "reported" ? "đã đưa tin (ghi nguồn)" : c.status}</Badge>
                 {c.sensitive && <Badge kind="warn">nhạy cảm</Badge>}<span>{c.text}</span>
                 <span className="right row"><button onClick={() => claimAct(c, "verified")}>Xác minh tay</button><button onClick={() => claimAct(c, "removed")}>Loại claim</button></span></div>
               <div className="small muted">{c.verification_reason} · {c.source_ids?.join(", ")} {c.evidence_excerpt && <>· “{c.evidence_excerpt}”</>}</div>

@@ -309,7 +309,7 @@ def patch_news(nid: str, body: dict = Body(...), db: Session = Depends(get_db), 
 
 
 class ClaimPatch(BaseModel):
-    status: Literal["verified", "unverified", "removed", "contested", "inference"] | None = None
+    status: Literal["verified", "reported", "unverified", "removed", "contested", "inference"] | None = None
     source_url: str | None = None
     editor_note: str | None = None
 
