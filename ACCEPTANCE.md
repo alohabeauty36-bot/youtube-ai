@@ -3,7 +3,7 @@
 Ngày chạy: 23/11/2026, máy build Linux, 2 vCPU, không GPU, không có credential thật.
 `PASS` chỉ được ghi khi đã có lần chạy thật. Những tích hợp chưa có key được ghi `BLOCKED_BY_CREDENTIALS`, kèm lý do cụ thể.
 
-**Lệnh chung:** `python run.py` khởi chạy toàn bộ ứng dụng (đã thử từ thư mục sạch trên Linux). `make test` → **184 passed** (pytest, khoảng 13 phút). `make demo` → toàn tuyến DEMO **PASS**: MP4 1080p dài 653,9 giây (10 phút 54 giây, trên sàn 10 phút), Media QA 15/15 đạt, upload DEMO `private`, đọc lại `private`, Telegram DEMO đã gửi, story ở trạng thái `EDITOR_REVIEW`. Hình ảnh: 114 cảnh 3–9 giây, 110 cảnh có nền video/ảnh (83 video, 27 ảnh), 4 cảnh đồ họa; tổng thời gian khoảng 12,4 phút.
+**Lệnh chung:** `python run.py` khởi chạy toàn bộ ứng dụng (đã thử từ thư mục sạch trên Linux). `make test` → **186 passed** (pytest, khoảng 13 phút). `make demo` → toàn tuyến DEMO **PASS**: MP4 1080p dài 653,9 giây (10 phút 54 giây, trên sàn 10 phút), Media QA 15/15 đạt, upload DEMO `private`, đọc lại `private`, Telegram DEMO đã gửi, story ở trạng thái `EDITOR_REVIEW`. Hình ảnh: 114 cảnh 3–9 giây, 110 cảnh có nền video/ảnh (83 video, 27 ảnh), 4 cảnh đồ họa; tổng thời gian khoảng 12,4 phút.
 
 ## Mục V — Điểm kiểm soát bàn giao
 

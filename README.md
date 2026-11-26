@@ -28,7 +28,7 @@ python run.py          # Windows: bấm đúp start.bat (hoặc: py run.py) · m
 | `--no-browser` | Không tự mở trình duyệt |
 | `--build-web` | Build lại giao diện từ `frontend/` (cần Node.js 20+, chỉ dành cho lập trình viên) |
 
-**Giọng đọc thật:** nếu chỉ chạy `start.bat`/`run.py` thường, máy chưa có VieNeu-TTS và audio là **âm giả lập (tiếng ù/bíp), không phải giọng nói**. Để có giọng thật: Windows bấm đúp **`start-giong-that.bat`**; macOS/Linux chạy `python run.py --with-tts`. Lần đọc đầu tiên cần Internet để tải model (vài trăm MB). Kiểm tra ở **Thiết lập → Giọng đọc VieNeu-TTS → Kiểm tra**: ứng dụng đọc thử một câu và phát cho bạn nghe, hoặc báo lỗi thật (chưa cài, không tải được model, sai tên giọng). Khi đã cài VieNeu, ứng dụng dùng giọng thật cả ở chế độ DEMO.
+**Giọng đọc thật:** nếu chỉ chạy `start.bat`/`run.py` thường, máy chưa có VieNeu-TTS và audio là **âm giả lập (tiếng ù/bíp), không phải giọng nói**. Để có giọng thật: Windows bấm đúp **`start-giong-that.bat`**; macOS/Linux chạy `python run.py --with-tts`. Lần đọc đầu tiên cần Internet để tải model (vài trăm MB). Kiểm tra ở **Thiết lập → tab Giọng đọc VieNeu → Kiểm tra**: ứng dụng đọc thử một câu và phát cho bạn nghe, hoặc báo lỗi thật (chưa cài, không tải được model, sai tên giọng). Khi đã cài VieNeu, ứng dụng dùng giọng thật cả ở chế độ DEMO.
 
 Lần đầu, ứng dụng ở chế độ **DEMO**: mọi dữ liệu đều giả lập và gắn nhãn, không upload thật. Bạn bấm **Săn tin → Quét tin ngay** để xem cả quy trình hoạt động.
 
@@ -38,7 +38,7 @@ Lần đầu, ứng dụng ở chế độ **DEMO**: mọi dữ liệu đều gi
 
 ## 2. Cấu hình API ngay trong ứng dụng
 
-Mở **Thiết lập → Cấu hình API & dịch vụ**. Không cần sửa file nào. Key và token được mã hoá trước khi lưu vào database. Sau khi lưu, ứng dụng chỉ hiện lại 4 ký tự cuối. Giá trị nhập ở đây ghi đè file `.env`. Mỗi nhóm đều có nút **Kiểm tra** để thử kết nối.
+Mở **Thiết lập**. Trang chia tab, mỗi tab là cấu hình của một phần (Chung · Kết nối dịch vụ · Sản xuất video · Vận hành); chấm màu cạnh tab cho biết dịch vụ đã kết nối (xanh) hay chưa nhập key (vàng), tab có thay đổi chưa lưu ghi "chưa lưu". Không cần sửa file nào. Key và token được mã hoá trước khi lưu vào database. Sau khi lưu, ứng dụng chỉ hiện lại 4 ký tự cuối. Giá trị nhập ở đây ghi đè file `.env`. Mỗi nhóm đều có nút **Kiểm tra** để thử kết nối.
 
 | Nhóm | Bạn nhập | Nút "Kiểm tra" làm gì |
 |---|---|---|
@@ -55,13 +55,13 @@ Sau khi nhập key, đổi **Chế độ** sang `production`, rồi bấm **Kế
 - Kênh, nguồn tin, tin fixture (kèm claim), mọi video DEMO và các bản viết lại, cùng ResearchPack, kịch bản, giọng đọc, cảnh, tư liệu, render, SEO, upload và tin Telegram giả lập, job, lượt duyệt và lỗi gắn với các video đó.
 - Bài luận DEMO, chi phí ước tính DEMO, bộ nhớ AI học từ dữ liệu DEMO.
 - File: `artifacts/<video>`, YouTube/Telegram giả lập, `media_library/demo`, cache giọng giả lập.
-- **Autopilot bị tắt** nếu đang bật (thường do chạy thử DEMO). Bật lại ở **Thiết lập → Tự động hoá** khi đã sẵn sàng.
+- **Autopilot bị tắt** nếu đang bật (thường do chạy thử DEMO). Bật lại ở **Thiết lập → tab Tự động hoàn toàn** khi đã sẵn sàng.
 
 Giữ nguyên: cấu hình và key đã nhập, **sổ cái ngân sách** (tiền thật đã tiêu, kể cả khi thử Claude lúc DEMO), nhật ký audit, hồ sơ năng lực phòng ban và mọi dữ liệu thật. Không hoàn tác được. Nếu còn video DEMO đang chạy dở, ứng dụng từ chối đổi chế độ và báo đợi chạy xong. Nếu đặt `APP_MODE=production` trong `.env`, dữ liệu DEMO còn sót sẽ được xoá ngay khi khởi động.
 
 **Truy cập:** khi mở trên chính máy chạy ứng dụng (127.0.0.1), bạn không cần mật khẩu. Khi truy cập từ máy khác, ứng dụng yêu cầu mật khẩu chủ kênh hoặc biên tập viên. Nếu ứng dụng nằm sau reverse proxy, các request có header proxy **không** được tin là truy cập cục bộ.
 
-**Dành cho lập trình viên:** `make test` chạy 184 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8010.
+**Dành cho lập trình viên:** `make test` chạy 186 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8010.
 
 ### Windows 11
 Nên dùng WSL2 (Ubuntu) với Docker Desktop. Cách native cũng chạy được với Python 3.12, FFmpeg (gyan.dev, có libass) và `pip install vieneu` (CPU/ONNX). GPU CUDA trên Windows cần cài `torch==2.8.0` cu128 trước, theo README của VieNeu.
@@ -83,7 +83,7 @@ Một công tắc trên **Bảng điều khiển** (hoặc Thiết lập → T�
 - **Phòng Đạo diễn hình ảnh** (Claude Haiku, ~0,002–0,005 USD/video; không có Claude thì dùng từ điển chủ đề xe điện) lên danh sách cảnh quay: mỗi cảnh 3–9 giây có một từ khoá tiếng Anh để tìm tư liệu, một câu chữ nhấn mạnh, và loại cảnh (video nền / chữ nhấn / câu hỏi / số liệu). Số liệu trên màn hình **chỉ lấy từ claim đã xác minh** (trường value/unit), không để AI tự viết số.
 - **Tư liệu theo từng cảnh**: Pexels **Video** (B-roll) trước, rồi ảnh Pexels, Wikimedia Commons, thư viện của chủ kênh (`media_library/`, ảnh hoặc video kèm `.license.json`). Mọi tư liệu qua license gate. Clip tải về lưu ở `artifacts/_stock_cache/` để video sau dùng lại. **Cần Pexels API key** (miễn phí tại pexels.com/api) ở Thiết lập → Kho tư liệu; thiếu key thì chỉ có thư viện chủ kênh và nền đồ họa.
 - **Dựng nhiều lớp**: nền luôn chuyển động (video B-roll, ảnh có Ken Burns 4 hướng, hoặc nền đồ họa có Ken Burns), lớp chữ trượt vào (chữ nhấn góc trên, thẻ dữ kiện có nguồn, số liệu cỡ lớn, câu hỏi), logo kênh góc trên phải, dải tối dưới đáy để phụ đề luôn rõ. Cùng một tư liệu không lặp ở cảnh liền kề.
-- **Ảnh minh họa AI** (FLUX.1 schnell): chỉ lấp những từ khoá mà kho tư liệu không có video/ảnh thật, tối đa `ai_images_per_video` (mặc định 12) ảnh/video. Nguồn `auto`: **Cloudflare Workers AI** trước (miễn phí trong hạn mức 10.000 neurons/ngày; app dừng ở `cloudflare_daily_images` = 150 ảnh/ngày), hết lượt hoặc thiếu key thì **fal.ai** (~0,003 USD/ảnh, mỗi ảnh được Ban Tài chính giữ chỗ trong trần ngân sách). Prompt bỏ tên thương hiệu/mẫu xe/số, yêu cầu không chữ, không logo, không biển số, không khuôn mặt nhận ra được; ảnh được đánh dấu AI, góc màn hình ghi "Ảnh minh họa AI", mô tả video ghi công. Cấu hình ở Thiết lập → Ảnh AI minh họa (nút Kiểm tra tạo thử 1 ảnh). Ảnh đã tạo lưu ở `artifacts/_ai_cache/` để dùng lại.
+- **Ảnh minh họa AI** (FLUX.1 schnell): chỉ lấp những từ khoá mà kho tư liệu không có video/ảnh thật, tối đa `ai_images_per_video` (mặc định 12) ảnh/video. Nguồn `auto`: **Cloudflare Workers AI** trước (miễn phí trong hạn mức 10.000 neurons/ngày; app dừng ở `cloudflare_daily_images` = 150 ảnh/ngày), hết lượt hoặc thiếu key thì **fal.ai** (~0,003 USD/ảnh, mỗi ảnh được Ban Tài chính giữ chỗ trong trần ngân sách). Prompt bỏ tên thương hiệu/mẫu xe/số, yêu cầu không chữ, không logo, không biển số, không khuôn mặt nhận ra được; ảnh được đánh dấu AI, góc màn hình ghi "Ảnh minh họa AI", mô tả video ghi công. Cấu hình ở **Thiết lập → tab Ảnh AI (Cloudflare · fal.ai)** (nút Kiểm tra tạo thử 1 ảnh). Ảnh đã tạo lưu ở `artifacts/_ai_cache/` để dùng lại.
 - **Nhạc nền**: đặt file nhạc vào `media_library/music/` kèm `<tên file>.license.json`, ví dụ nhạc tải từ YouTube Studio → Thư viện âm thanh: `{"license_name": "YouTube Audio Library", "allowed_commercial": true, "source_url": "…", "attribution_text": "Tên bài — Tác giả"}`. Nhạc ở mức `music_volume_db` (mặc định -20 dB) và tự giảm thêm khi có giọng đọc; ghi công tự thêm vào mô tả video.
 - **Luôn 16:9**: video 1920×1080 (Media QA kiểm tra cả DAR 16:9 và SAR 1:1), thumbnail 1280×720, ảnh AI đưa về 1920×1080. Tư liệu dọc hoặc vuông (rộng/cao < 1,3) không được dùng làm nền vì cắt sang 16:9 sẽ mất chủ thể; Wikimedia chỉ lấy ảnh ngang.
 - Trang **Tư liệu & cảnh** hiện từng cảnh (ảnh xem trước có lớp chữ), loại cảnh, video hay ảnh, và từ khoá đã tìm.
@@ -171,7 +171,7 @@ prompts/pillars/P1|P2|P3.md       hồ sơ trụ cột
 prompts/reference/…               Mục IV nguyên văn (tham khảo văn phong)
 frontend/                         Next.js 15 + TypeScript (xuất tĩnh → backend/ev_studio/web_dist, backend phục vụ)
 migrations/                       Alembic
-tests/                            184 test
+tests/                            186 test
 run.py, start.bat, start.sh       chạy bằng một lệnh
 backend/ev_studio/runtime_config.py  cấu hình API lưu mã hoá trong DB
 backend/ev_studio/agents/            Ban Tài chính (budget, pricing) + bộ não phòng ban (brain, memory, teachers, learning, writer) + Ban Tăng trưởng (growth)
