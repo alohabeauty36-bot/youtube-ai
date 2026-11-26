@@ -44,7 +44,10 @@ def run_media_qa(video: Path, *, exact_10min: bool, dur_min: float, dur_max: flo
     a = next((s for s in info.get("streams", []) if s.get("codec_type") == "audio"), {})
     add("Video H.264 yuv420p", v.get("codec_name") == "h264" and v.get("pix_fmt") == "yuv420p",
         f"{v.get('codec_name')} {v.get('pix_fmt')}")
-    add("Độ phân giải 1920×1080 (16:9)", (v.get("width"), v.get("height")) == (1920, 1080), f"{v.get('width')}×{v.get('height')}")
+    dar = v.get("display_aspect_ratio")
+    add("Độ phân giải 1920×1080 (16:9)", (v.get("width"), v.get("height")) == (1920, 1080) and dar in (None, "16:9")
+        and v.get("sample_aspect_ratio") in (None, "1:1"),
+        f"{v.get('width')}×{v.get('height')} DAR {dar or '?'} SAR {v.get('sample_aspect_ratio') or '?'}")
     fr = v.get("r_frame_rate", "0/1").split("/")
     fps = float(fr[0]) / float(fr[1] or 1) if len(fr) == 2 else 0
     add("30 fps", abs(fps - 30) < 0.01, f"{fps:.2f}")

@@ -126,6 +126,7 @@ def test_pexels_and_wikimedia_finders_with_mock_http():
     def wm(req):
         return httpx.Response(200, json={"query": {"pages": {"1": {"title": "File:x.jpg", "imageinfo": [{
             "descriptionurl": "https://commons.wikimedia.org/wiki/File:x.jpg", "thumburl": "https://upload/x.jpg",
+            "width": 4000, "height": 2250, "mime": "image/jpeg",
             "extmetadata": {"LicenseShortName": {"value": "CC BY-NC 2.0"}, "Artist": {"value": "<a>B</a>"}}}]}}}})
 
     w = WikimediaFinder("ua", client=httpx.Client(transport=httpx.MockTransport(wm)))

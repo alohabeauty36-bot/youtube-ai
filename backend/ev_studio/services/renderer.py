@@ -88,6 +88,39 @@ def render_layered_clip(bg: dict, overlay: Path | None, duration: float, out: Pa
     return out
 
 
+ASPECT = 16 / 9  # video YouTube luôn 16:9 (1920×1080)
+MIN_SOURCE_ASPECT = 1.3  # tư liệu nguồn hẹp hơn ~4:3 (dọc/vuông) cắt sang 16:9 sẽ mất chủ thể → không dùng làm nền
+
+
+def media_aspect(path: Path, media_type: str) -> float | None:
+    """Tỉ lệ rộng/cao của ảnh hoặc video nguồn (None nếu không đọc được)."""
+    try:
+        if media_type == "video":
+            r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                                "stream=width,height:stream_side_data=rotation", "-of", "json", str(path)],
+                               capture_output=True, text=True)
+            import json as _json
+
+            st = (_json.loads(r.stdout or "{}").get("streams") or [{}])[0]
+            w, h = int(st.get("width") or 0), int(st.get("height") or 0)
+            rot = abs(int(next((d.get("rotation", 0) for d in st.get("side_data_list") or [] if "rotation" in d), 0) or 0))
+            if rot in (90, 270):
+                w, h = h, w
+        else:
+            from PIL import Image
+
+            with Image.open(path) as im:
+                w, h = im.size
+        return (w / h) if w and h else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def is_landscape_enough(path: Path, media_type: str) -> bool:
+    a = media_aspect(path, media_type)
+    return a is not None and a >= MIN_SOURCE_ASPECT
+
+
 def video_duration(path: Path) -> float:
     r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
                        capture_output=True, text=True)

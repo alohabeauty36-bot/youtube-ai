@@ -144,3 +144,31 @@ def test_music_needs_license_sidecar(tmp_path, monkeypatch):
     monkeypatch.setattr(jobs, "get_settings", lambda: get_settings().model_copy(update={"media_library_dir": root}))
     m = jobs._pick_music(type("S", (), {"id": "story-1"})())
     assert m and m["path"].endswith("yt_audio_library.wav") and "YouTube Audio Library" in m["credit"]
+
+
+def test_only_landscape_sources_for_16_9(tmp_path):
+    """Video YouTube luôn 16:9: ảnh/video dọc hoặc vuông không được dùng làm nền (cắt sang 16:9 sẽ mất chủ thể)."""
+    from PIL import Image
+
+    Image.new("RGB", (1600, 900)).save(tmp_path / "wide.jpg")
+    Image.new("RGB", (1000, 1000)).save(tmp_path / "square.jpg")
+    vert = tmp_path / "vert.mp4"
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "gradients=s=720x1280:duration=1:rate=30",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", str(vert)], check=True)
+    assert renderer.is_landscape_enough(tmp_path / "wide.jpg", "image")
+    assert not renderer.is_landscape_enough(tmp_path / "square.jpg", "image")
+    assert not renderer.is_landscape_enough(vert, "video")
+
+
+def test_wikimedia_skips_portrait_and_svg():
+    from ev_studio.services.media.finders import WikimediaFinder
+
+    def ii(w, h, mime="image/jpeg", n=1):
+        return {"title": f"File:{n}.jpg", "imageinfo": [{"width": w, "height": h, "mime": mime, "url": f"https://u/{n}",
+                "descriptionurl": f"https://commons/{n}", "extmetadata": {"LicenseShortName": {"value": "CC BY 4.0"},
+                                                                          "Artist": {"value": "A"}}}]}
+
+    pages = {"1": ii(3000, 4000, n=1), "2": ii(1200, 1200, n=2), "3": ii(2000, 1000, "image/svg+xml", n=3), "4": ii(4000, 2250, n=4)}
+    c = httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(200, json={"query": {"pages": pages}})))
+    found = WikimediaFinder("ua", client=c).search("ev", limit=5)
+    assert [f.source_url for f in found] == ["https://commons/4"]

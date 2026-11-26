@@ -429,6 +429,8 @@ def storyboard_job(session: Session, story: Story, p: Providers) -> dict:
                                                  Asset.local_path.is_not(None))):
         if not a.local_path or not Path(a.local_path).exists():
             continue
+        if not renderer.is_landscape_enough(Path(a.local_path), a.media_type):
+            continue  # video YouTube 16:9: bỏ ảnh/video dọc hoặc vuông (cắt sang 16:9 sẽ mất chủ thể)
         dur = renderer.video_duration(Path(a.local_path)) if a.media_type == "video" else None
         if a.media_type == "video" and (not dur or dur < 2):
             continue
@@ -636,10 +638,12 @@ def seo_job(session: Session, story: Story, p: Providers) -> dict:
     approved = {a.id: a for a in session.scalars(select(Asset).where(Asset.story_id == story.id, Asset.review_status == "approved"))}
     photos = [approved[i] for i in dict.fromkeys(used_ids) if i in approved] or list(approved.values())
     # ảnh nền thumbnail: ảnh tĩnh đầu tiên; không có thì cắt một khung từ video B-roll đầu tiên
-    pick = next((a for a in photos if a.media_type == "image" and a.local_path), None)
+    pick = next((a for a in photos if a.media_type == "image" and a.local_path and Path(a.local_path).exists()
+                 and renderer.is_landscape_enough(Path(a.local_path), "image")), None)
     photo = Path(pick.local_path) if pick else None
     if photo is None:
-        vid = next((a for a in photos if a.media_type == "video" and a.local_path), None)
+        vid = next((a for a in photos if a.media_type == "video" and a.local_path and Path(a.local_path).exists()
+                    and renderer.is_landscape_enough(Path(a.local_path), "video")), None)
         if vid is not None:
             photo = renderer.still_from_video(Path(vid.local_path), 1.5, d / "thumbnail_source.jpg")
             pick = vid

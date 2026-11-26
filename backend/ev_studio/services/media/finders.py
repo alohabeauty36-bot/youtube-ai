@@ -172,7 +172,7 @@ class WikimediaFinder:
 
     def search(self, query: str, limit: int = 5) -> list[FoundAsset]:
         params = {"action": "query", "format": "json", "generator": "search", "gsrnamespace": 6, "gsrsearch": query,
-                  "gsrlimit": limit, "prop": "imageinfo", "iiprop": "url|extmetadata", "iiurlwidth": 1920}
+                  "gsrlimit": limit * 3, "prop": "imageinfo", "iiprop": "url|extmetadata|size", "iiurlwidth": 1920}
         try:
             r = self.client.get(self.API, params=params)
         except httpx.HTTPError as e:
@@ -185,6 +185,11 @@ class WikimediaFinder:
         out = []
         for p in pages.values():
             ii = (p.get("imageinfo") or [{}])[0]
+            w, h = int(ii.get("width") or 0), int(ii.get("height") or 0)
+            if not (w and h and w / h >= 1.3) or (ii.get("mime") or "").startswith("image/svg"):
+                continue  # video 16:9: chỉ lấy ảnh ngang (bỏ ảnh dọc/vuông/sơ đồ SVG)
+            if len(out) >= limit:
+                break
             md = ii.get("extmetadata") or {}
             g = lambda k: (md.get(k) or {}).get("value")  # noqa: E731
             artist = _strip(g("Artist") or "")
