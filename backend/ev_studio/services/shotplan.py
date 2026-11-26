@@ -50,6 +50,7 @@ class ShotLLM(BaseModel):
     kind: str = "broll"
     query_en: str = ""
     overlay_vi: str = ""
+    image_prompt_en: str = ""
     claim_id: str | None = None
 
 
@@ -61,12 +62,14 @@ SYSTEM = """Bạn là ĐẠO DIỄN HÌNH ẢNH cho video YouTube bình luận t
 Với mỗi cảnh (đoạn lời đọc 3–9 giây), chọn hình ảnh minh họa có thật trong kho video/ảnh miễn phí (Pexels, Wikimedia).
 
 Trả về DUY NHẤT JSON: {"shots": [{"idx": 0, "kind": "broll|keypoint|question|stat", "query_en": "...", "overlay_vi": "...",
-"claim_id": null}]}, đủ MỌI idx được cho.
+"image_prompt_en": "...", "claim_id": null}]}, đủ MỌI idx được cho.
 - query_en: 2–5 từ tiếng Anh, mô tả cảnh quay CỤ THỂ, quay được (vd "ev charging station night", "hand holding smartphone
   app", "car dealership showroom"). Không tên thương hiệu, không người nổi tiếng, không chữ. Cảnh liền nhau không trùng query.
 - kind: broll (mặc định, chỉ hình + phụ đề) | keypoint (hiện câu nhấn mạnh) | question (câu hỏi mở cho người xem) |
   stat (chỉ khi cảnh nhắc đúng một claim có số liệu trong CLAIMS; ghi claim_id). Khoảng 1/3 số cảnh là keypoint.
 - overlay_vi: 3–9 từ tiếng Việt có dấu, tóm ý chính của cảnh, KHÔNG thêm số liệu hay dữ kiện không có trong lời đọc.
+- image_prompt_en: 12–30 từ tiếng Anh mô tả một bức ảnh minh họa chung (dùng khi kho video không có cảnh phù hợp):
+  bối cảnh, ánh sáng, góc máy. KHÔNG thương hiệu, KHÔNG mẫu xe cụ thể, KHÔNG người có thể nhận ra, KHÔNG chữ/số.
 Không bịa số. Không chèn lời bình ngoài nội dung lời đọc."""
 
 
@@ -138,7 +141,11 @@ def validate_llm_plan(raw: dict, scenes: list[dict], stat_claims: dict[str, dict
         ov = _clean(s.overlay_vi)
         if not ov or len(ov.split()) > 12 or re.search(r"\d", ov) and not re.search(r"\d", sc["text"]):
             ov = fb["overlay_vi"]  # không cho chữ trên màn hình có số mà lời đọc không có
-        out.append({"idx": sc["idx"], "kind": kind, "query_en": q, "overlay_vi": ov, "claim_id": claim, "source": "llm"})
+        ip = _clean(s.image_prompt_en)
+        if not (ip.isascii() and 5 <= len(ip.split()) <= 45) or re.search(r"\d", ip):
+            ip = ""
+        out.append({"idx": sc["idx"], "kind": kind, "query_en": q, "overlay_vi": ov, "claim_id": claim, "source": "llm",
+                    "image_prompt_en": ip})
         recent.append(q)
     return out
 

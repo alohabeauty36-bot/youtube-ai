@@ -152,6 +152,18 @@ class Settings(BaseSettings):
     music_volume_db: float = -20.0  # nhạc nền (thư viện chủ kênh media_library/music), tự giảm thêm khi có giọng đọc
     channel_brand: str = ""  # chữ logo góc màn hình; trống = tên kênh YouTube
 
+    # --- ảnh minh họa AI (FLUX.1 schnell): lấp cảnh kho tư liệu không có hình phù hợp ---
+    ai_image_provider: Literal["auto", "cloudflare", "fal", "off"] = "auto"  # auto: Cloudflare (miễn phí) trước, rồi fal.ai
+    ai_images_per_video: int = 12
+    cloudflare_account_id: str = ""
+    cloudflare_api_token: SecretStr | None = None
+    cloudflare_image_model: str = "@cf/black-forest-labs/flux-1-schnell"
+    cloudflare_daily_images: int = 150  # ~57 neurons/ảnh → 150 ảnh ≈ 8.600 neurons, dưới 10.000 neurons miễn phí/ngày
+    fal_api_key: SecretStr | None = None
+    fal_model: str = "fal-ai/flux-1/schnell"
+    fal_image_size: str = "landscape_16_9"
+    fal_price_per_image: float = 0.003  # USD; Ban Tài chính giữ chỗ trước mỗi ảnh
+
     # --- render ---
     render_preset: str = "veryfast"
     render_burn_subtitles: bool = True

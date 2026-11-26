@@ -7,7 +7,7 @@ type Field = { key: string; label: string; group: string; kind: string; options:
   restart: boolean; source: string; value?: any; is_set?: boolean; masked?: string | null };
 type Cfg = { groups: Record<string, string>; fields: Field[]; oauth_redirect_uri: string; local_access?: boolean };
 
-const TEST_FOR: Record<string, string> = { anthropic: "anthropic", tts: "tts", youtube: "youtube", telegram: "telegram", media: "pexels" };
+const TEST_FOR: Record<string, string> = { anthropic: "anthropic", tts: "tts", youtube: "youtube", telegram: "telegram", media: "pexels", ai_images: "ai_images" };
 const SOURCE: Record<string, [string, any]> = { ui: ["đã lưu trong giao diện", "ok"], env: ["từ file .env", "info"], default: ["mặc định", "info"] };
 type DemoSummary = { stories: number; news: number; sources: number; channels: number; essays: number; cost_rows: number;
   running_stories: number; has_files: boolean; total: number };

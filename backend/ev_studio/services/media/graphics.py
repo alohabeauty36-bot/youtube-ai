@@ -402,3 +402,14 @@ def compose_preview(path: Path, base: Path, overlay: Path | None) -> Path:
     if overlay is not None and Path(overlay).exists():
         img.alpha_composite(Image.open(overlay).convert("RGBA"))
     return _save(img.convert("RGB"), path)
+
+
+def add_tag(overlay: Path, text: str) -> Path:
+    """Nhãn nhỏ dưới logo kênh (góc trên phải): 'Ảnh minh họa AI' / 'Ảnh minh họa' — không bị Ken Burns cắt mất."""
+    img = Image.open(overlay).convert("RGBA")
+    d = ImageDraw.Draw(img, "RGBA")
+    f = font(24, True)
+    tw = d.textlength(text, font=f)
+    d.rounded_rectangle([W - tw - 76, 110, W - 48, 148], 8, fill=(0, 0, 0, 140))
+    d.text((W - tw - 62, 115), text, font=f, fill=WARN)
+    return _save_rgba(img, overlay)

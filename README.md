@@ -61,7 +61,7 @@ Giữ nguyên: cấu hình và key đã nhập, **sổ cái ngân sách** (tiề
 
 **Truy cập:** khi mở trên chính máy chạy ứng dụng (127.0.0.1), bạn không cần mật khẩu. Khi truy cập từ máy khác, ứng dụng yêu cầu mật khẩu chủ kênh hoặc biên tập viên. Nếu ứng dụng nằm sau reverse proxy, các request có header proxy **không** được tin là truy cập cục bộ.
 
-**Dành cho lập trình viên:** `make test` chạy 172 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8010.
+**Dành cho lập trình viên:** `make test` chạy 178 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8010.
 
 ### Windows 11
 Nên dùng WSL2 (Ubuntu) với Docker Desktop. Cách native cũng chạy được với Python 3.12, FFmpeg (gyan.dev, có libass) và `pip install vieneu` (CPU/ONNX). GPU CUDA trên Windows cần cài `torch==2.8.0` cu128 trước, theo README của VieNeu.
@@ -83,6 +83,7 @@ Một công tắc trên **Bảng điều khiển** (hoặc Thiết lập → T�
 - **Phòng Đạo diễn hình ảnh** (Claude Haiku, ~0,002–0,005 USD/video; không có Claude thì dùng từ điển chủ đề xe điện) lên danh sách cảnh quay: mỗi cảnh 3–9 giây có một từ khoá tiếng Anh để tìm tư liệu, một câu chữ nhấn mạnh, và loại cảnh (video nền / chữ nhấn / câu hỏi / số liệu). Số liệu trên màn hình **chỉ lấy từ claim đã xác minh** (trường value/unit), không để AI tự viết số.
 - **Tư liệu theo từng cảnh**: Pexels **Video** (B-roll) trước, rồi ảnh Pexels, Wikimedia Commons, thư viện của chủ kênh (`media_library/`, ảnh hoặc video kèm `.license.json`). Mọi tư liệu qua license gate. Clip tải về lưu ở `artifacts/_stock_cache/` để video sau dùng lại. **Cần Pexels API key** (miễn phí tại pexels.com/api) ở Thiết lập → Kho tư liệu; thiếu key thì chỉ có thư viện chủ kênh và nền đồ họa.
 - **Dựng nhiều lớp**: nền luôn chuyển động (video B-roll, ảnh có Ken Burns 4 hướng, hoặc nền đồ họa có Ken Burns), lớp chữ trượt vào (chữ nhấn góc trên, thẻ dữ kiện có nguồn, số liệu cỡ lớn, câu hỏi), logo kênh góc trên phải, dải tối dưới đáy để phụ đề luôn rõ. Cùng một tư liệu không lặp ở cảnh liền kề.
+- **Ảnh minh họa AI** (FLUX.1 schnell): chỉ lấp những từ khoá mà kho tư liệu không có video/ảnh thật, tối đa `ai_images_per_video` (mặc định 12) ảnh/video. Nguồn `auto`: **Cloudflare Workers AI** trước (miễn phí trong hạn mức 10.000 neurons/ngày; app dừng ở `cloudflare_daily_images` = 150 ảnh/ngày), hết lượt hoặc thiếu key thì **fal.ai** (~0,003 USD/ảnh, mỗi ảnh được Ban Tài chính giữ chỗ trong trần ngân sách). Prompt bỏ tên thương hiệu/mẫu xe/số, yêu cầu không chữ, không logo, không biển số, không khuôn mặt nhận ra được; ảnh được đánh dấu AI, góc màn hình ghi "Ảnh minh họa AI", mô tả video ghi công. Cấu hình ở Thiết lập → Ảnh AI minh họa (nút Kiểm tra tạo thử 1 ảnh). Ảnh đã tạo lưu ở `artifacts/_ai_cache/` để dùng lại.
 - **Nhạc nền**: đặt file nhạc vào `media_library/music/` kèm `<tên file>.license.json`, ví dụ nhạc tải từ YouTube Studio → Thư viện âm thanh: `{"license_name": "YouTube Audio Library", "allowed_commercial": true, "source_url": "…", "attribution_text": "Tên bài — Tác giả"}`. Nhạc ở mức `music_volume_db` (mặc định -20 dB) và tự giảm thêm khi có giọng đọc; ghi công tự thêm vào mô tả video.
 - Trang **Tư liệu & cảnh** hiện từng cảnh (ảnh xem trước có lớp chữ), loại cảnh, video hay ảnh, và từ khoá đã tìm.
 
@@ -95,7 +96,7 @@ Mặc định **50 USD/tháng** cho Claude + ChatGPT (chỉnh ở **Thiết lậ
 |---|---|---|
 | Tháng | 50 USD, giữ lại 5% phòng sai số → chi tối đa 47,5 USD | cứng |
 | Ngày | phần còn lại của tháng ÷ số ngày còn lại, **không quá 2× bình quân** (~3,2 USD) | chống một ngày tiêu quá tay |
-| Phòng ban | Săn tin 14%, Nghiên cứu 22%, Biên kịch 41%, Biên tập 6%, Bài luận 10%, Đào tạo 3%, Tăng trưởng 2%, Đạo diễn hình ảnh 2% | một phòng không ăn hết phần của phòng khác |
+| Phòng ban | Săn tin 14%, Nghiên cứu 22%, Biên kịch 35%, Biên tập 6%, Bài luận 10%, Đào tạo 3%, Tăng trưởng 2%, Đạo diễn hình ảnh 8% (gồm ảnh fal.ai) | một phòng không ăn hết phần của phòng khác |
 | Mỗi video | 0,75 USD (đủ cho ResearchPack + kịch bản + 3 lần viết lại) | |
 | Số tin | Autopilot tối đa **3 tin/ngày**, chỉ mở tin mới khi còn đủ tiền cho một video | |
 
@@ -169,7 +170,7 @@ prompts/pillars/P1|P2|P3.md       hồ sơ trụ cột
 prompts/reference/…               Mục IV nguyên văn (tham khảo văn phong)
 frontend/                         Next.js 15 + TypeScript (xuất tĩnh → backend/ev_studio/web_dist, backend phục vụ)
 migrations/                       Alembic
-tests/                            172 test
+tests/                            178 test
 run.py, start.bat, start.sh       chạy bằng một lệnh
 backend/ev_studio/runtime_config.py  cấu hình API lưu mã hoá trong DB
 backend/ev_studio/agents/            Ban Tài chính (budget, pricing) + bộ não phòng ban (brain, memory, teachers, learning, writer) + Ban Tăng trưởng (growth)

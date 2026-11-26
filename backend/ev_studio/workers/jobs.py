@@ -367,14 +367,39 @@ def media_job(session: Session, story: Story, p: Providers) -> dict:
                     take(fa, q)
                 except RetryableError as e:
                     errors.append(f"tải {fa.provider}: {e}")
+    # Ảnh minh họa AI (Cloudflare miễn phí trước, rồi fal.ai): chỉ cho từ khoá chưa có video/ảnh thật, tối đa N ảnh/video
+    ai_made, ai_notes = 0, []
+    missing = [q for q in queries if not by_query.get(q)]
+    if missing and s.ai_images_per_video > 0:
+        from ..services.media.ai_images import AIImageMaker, as_found_asset, providers_in_order
+
+        if providers_in_order(s):
+            prompts = {}
+            for sh in plan:
+                prompts.setdefault(sh["query_en"], sh.get("image_prompt_en") or "")
+            maker = AIImageMaker(s, s.artifacts_dir / "_ai_cache", session, story.id)
+            for k, q in enumerate(missing[: s.ai_images_per_video]):
+                g = maker.make(q, prompts.get(q), seed=int(hashlib_sha(q), 16) % 2_147_483_647)
+                if g is None:
+                    break  # mọi nguồn đều hết lượt/hết tiền/lỗi → phần còn lại dùng nền đồ họa
+                take(as_found_asset(g, q), q)
+            ai_made, ai_notes = maker.made, maker.notes[:5]
+            session.commit()  # lưu bộ đếm ảnh/ngày ngay
     plan_doc = {"scenes": len(scenes), "plan": plan, "queries": queries, "assets_by_query": by_query, "errors": errors[:10],
-                "planner": plan[0]["source"] if plan else None}
+                "planner": plan[0]["source"] if plan else None, "ai_images_made": ai_made, "ai_notes": ai_notes}
     pp = _plan_path(story, sv)
     pp.parent.mkdir(parents=True, exist_ok=True)
     pp.write_text(json.dumps(plan_doc, ensure_ascii=False, indent=1), encoding="utf-8")
     videos = sum(len(v) for k, v in by_query.items() if k != "__library__")
     return {"approved": approved, "rejected": rejected, "queries": len(queries), "planner": plan_doc["planner"],
-            "stock_assets": videos, "fallback_internal_graphics": approved == 0, "errors": errors[:3]}
+            "stock_assets": videos, "ai_images_made": ai_made, "fallback_internal_graphics": approved == 0,
+            "errors": (errors + ai_notes)[:5]}
+
+
+def hashlib_sha(text: str) -> str:
+    import hashlib
+
+    return hashlib.sha1(text.encode()).hexdigest()[:8]
 
 
 # ------------------------------------------------------------------ 7. storyboard
@@ -408,7 +433,8 @@ def storyboard_job(session: Session, story: Story, p: Providers) -> dict:
         if a.media_type == "video" and (not dur or dur < 2):
             continue
         assets.append({"id": a.id, "path": a.local_path, "media_type": a.media_type, "duration": dur,
-                       "illustration": a.is_illustration, "credit": a.license.attribution_text if a.license else None})
+                       "illustration": a.is_illustration, "ai": a.is_ai_generated,
+                       "credit": a.license.attribution_text if a.license else None})
     for old in session.scalars(select(Scene).where(Scene.story_id == story.id, Scene.script_version_id == sv.id)):
         session.delete(old)
     gdir = story_dir(story) / f"scenes_v{sv.version}"
@@ -498,6 +524,8 @@ def storyboard_job(session: Session, story: Story, p: Providers) -> dict:
                 overlay = graphics.overlay_keypoint(ov_path, caption, "Điểm chính", brand, demo)
             else:
                 overlay = graphics.overlay_clean(ov_path, brand, demo)
+        if overlay is not None and bg_asset is not None and (bg_asset.get("ai") or bg_asset.get("illustration")):
+            graphics.add_tag(overlay, "Ảnh minh họa AI" if bg_asset.get("ai") else "Ảnh minh họa")
         # ảnh xem trước của cảnh (trang Tư liệu & cảnh): khung nền + lớp phủ
         prev = gdir / f"scene_{sc.idx:03d}.png"
         if bg["kind"] == "video":

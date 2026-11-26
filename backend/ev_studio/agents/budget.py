@@ -27,12 +27,12 @@ from . import pricing
 DEPARTMENT_SHARES: dict[str, float] = {
     "san_tin": 0.14,
     "nghien_cuu": 0.22,
-    "bien_kich": 0.41,
+    "bien_kich": 0.35,
     "bien_tap": 0.06,
     "bai_luan": 0.10,  # bài luận theo chủ đề: ~4,75 USD/tháng ≈ 50–70 bài do thầy viết; Bậc thầy thì $0
     "hoc_tap": 0.03,
     "tang_truong": 0.02,
-    "dao_dien": 0.02,  # danh sách cảnh quay bằng Haiku: ~0,002–0,005 USD mỗi video  # bản ghi nhớ chiến lược hằng tuần bằng Haiku: vài cent/tuần
+    "dao_dien": 0.08,  # cảnh quay (Haiku ~0,003 USD/video) + ảnh AI fal.ai (~0,003 USD/ảnh) khi Cloudflare hết lượt miễn phí  # bản ghi nhớ chiến lược hằng tuần bằng Haiku: vài cent/tuần
 }
 DEFAULT_STORY_COST = 0.35  # ước tính ban đầu khi chưa có dữ liệu thật
 STALE_RESERVATION = timedelta(hours=2)
@@ -106,6 +106,31 @@ def reserve(department: str, provider: str, model: str, est_input_tokens: int, m
 
     s = get_settings()
     est = pricing.cost_usd(model, est_input_tokens, max_output_tokens, overrides_json=s.model_prices_json)
+    return _reserve(department, provider, model, est, est_input_tokens, max_output_tokens, story_id, note)
+
+
+def reserve_usd(department: str, provider: str, model: str, usd: float, story_id: str | None = None, note: str = "") -> int:
+    """Giữ chỗ một khoản tiền cố định (dịch vụ tính theo ảnh, vd. fal.ai), qua đúng các trần tháng/ngày/phòng/video."""
+    return _reserve(department, provider, model, float(usd), 0, 0, story_id, note)
+
+
+def settle_usd(rid: int, usd: float) -> float:
+    from ..models import BudgetLedger
+
+    with _session() as db:
+        row = db.get(BudgetLedger, rid)
+        if row is None:
+            return 0.0
+        row.usd, row.status = float(usd), "settled"
+        db.commit()
+        return row.usd
+
+
+def _reserve(department: str, provider: str, model: str, est: float, est_input_tokens: int, max_output_tokens: int,
+             story_id: str | None, note: str) -> int:
+    from ..models import BudgetLedger
+
+    s = get_settings()
     with _lock, _session() as db:
         w = window()
         cap = effective_cap()
