@@ -249,7 +249,7 @@ def main() -> None:
     s = get_settings()
     say("=" * 64)
     say(f"Đang chạy tại {url}   (Ctrl+C để dừng)")
-    say(f"Chế độ: {s.app_mode.upper()}  — đổi chế độ và nhập key API trong Thiết lập → Cấu hình API")
+    say(f"Chế độ: {s.app_mode.upper()}  — đổi chế độ và nhập key API trong Thiết lập (mỗi dịch vụ một tab)")
     say("Video tải lên YouTube ở trạng thái RIÊNG TƯ; chỉ công khai khi bạn duyệt hoặc khi bật Tự động hoàn toàn.")
     if not local_only:
         say("⚠️  Đang mở cho máy khác truy cập: hãy đặt 'Mật khẩu chủ kênh' trong Thiết lập → Bảo mật dashboard.")

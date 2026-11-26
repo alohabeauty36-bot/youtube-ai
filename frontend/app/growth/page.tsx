@@ -64,8 +64,8 @@ export default function Growth() {
       <DemoBanner show={p?.is_demo || g.data?.mode === "demo"} />
       <ErrorBox error={g.error || err} />
       {ch.connected && !ch.analytics_scope && <div className="error">Kênh được kết nối trước khi có Ban Tăng trưởng nên chưa có quyền đọc Analytics.
-        Vào <Link href="/settings">Thiết lập</Link> → bấm <b>Kết nối kênh YouTube</b> lại và đồng ý các quyền mới (đọc số liệu, đọc doanh thu).</div>}
-      {!ch.connected && <div className="hint">Chưa kết nối kênh. Vào <Link href="/settings">Thiết lập</Link> → Kết nối kênh YouTube.</div>}
+        Vào <Link href="/settings/#youtube">Thiết lập → YouTube</Link> → bấm <b>Kết nối kênh YouTube</b> lại và đồng ý các quyền mới (đọc số liệu, đọc doanh thu).</div>}
+      {!ch.connected && <div className="hint">Chưa kết nối kênh. Vào <Link href="/settings/#youtube">Thiết lập → YouTube</Link> → Kết nối kênh YouTube.</div>}
 
       <Card title="KPI doanh thu quảng cáo tháng" right={<Badge kind={cfg.growth_auto_apply ? "ok" : "info"}>{cfg.growth_auto_apply ? "Ban Tăng trưởng tự chỉnh kế hoạch" : "Chỉ đề xuất"}</Badge>}>
         <div className="row">
