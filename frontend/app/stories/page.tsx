@@ -9,6 +9,7 @@ export default function Stories() {
   const { data, error, reload } = useLoad<any[]>("/api/stories", d => (d || []).some((s: any) => s.running) ? 3000 : null);
   const [busy, setBusy] = useState(false); const [err, setErr] = useState<any>(null);
   const stuck = (data || []).filter(s => STOP_STATES.includes(s.state));
+  const waiting = (data || []).filter(s => !STOP_STATES.includes(s.state) && s.next_steps?.some((x: any) => x.action === "approve"));
   const runAll = async () => {
     setBusy(true); setErr(null);
     try { for (const s of stuck) if (!s.running) await api(`/api/stories/${s.id}/run`, { method: "POST" }); setTimeout(reload, 800); }
@@ -24,12 +25,13 @@ export default function Stories() {
           Bấm vào tên video để xem đầy đủ hướng dẫn.</span>
         <span className="right"><button className="primary" disabled={busy} onClick={runAll}>{busy ? "Đang gửi…" : `Chạy lại cả ${stuck.length} video`}</button></span>
       </div>}
+      {waiting.length > 0 && <div className="hint"><b>{waiting.length} video có kịch bản đang chờ bạn duyệt.</b> Bấm <b>Duyệt &amp; dựng</b> ở cột bên phải.</div>}
       <Card>
         <table><thead><tr><th>Chủ đề</th><th>Trụ cột</th><th>Chế độ</th><th>Trạng thái</th><th>Lý do / việc cần làm</th><th>Bản</th><th>Cập nhật</th></tr></thead>
           <tbody>{(data || []).map(s => <tr key={s.id}>
             <td><Link href={`/story/?id=${s.id}`}>{s.topic}</Link> {s.is_demo && <Badge kind="demo">DEMO</Badge>} {s.running && <Badge kind="warn">đang chạy…</Badge>}</td>
             <td>{s.pillar}</td><td>{s.mode}</td><td><StateBadge state={s.state} /></td>
-            <td style={{ maxWidth: 420 }}>{STOP_STATES.includes(s.state) ? <>
+            <td style={{ maxWidth: 420 }}>{s.next_steps?.length ? <>
               {reason(s) && <div className="small err-msg" title={reason(s)}>{reason(s)}</div>}
               <NextSteps s={s} reload={reload} compact /></> : <span className="muted small">—</span>}</td>
             <td>v{s.revision}</td><td className="small">{fmtDate(s.updated_at)}</td></tr>)}</tbody></table>

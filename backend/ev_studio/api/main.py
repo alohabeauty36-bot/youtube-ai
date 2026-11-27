@@ -98,7 +98,9 @@ def ser_story(st: Story) -> dict:
     from ..services.next_steps import next_steps
 
     out = _ser_story_fields(st)
-    out["next_steps"] = next_steps(st.state, st.blockers, st.last_error)
+    out["next_steps"] = next_steps(st.state, st.blockers, st.last_error,
+                                   awaiting_script_approval=bool(st.current_script_version_id and not st.script_approved_by
+                                                                 and st.mode != "AUTOPILOT_PRIVATE"))
     return out
 
 
@@ -533,7 +535,8 @@ def patch_script(svid: str, body: ScriptPatch, db: Session = Depends(get_db), ac
 
 
 @app.post("/api/scripts/{svid}/approve")
-def approve_script(svid: str, db: Session = Depends(get_db), actor: Actor = Depends(current_actor)):
+def approve_script(svid: str, force: bool = False, db: Session = Depends(get_db), actor: Actor = Depends(current_actor)):
+    """Duyệt kịch bản hiện hành. `force=true`: chủ kênh bỏ qua Script QA cho riêng bản này (ghi nhật ký)."""
     from ..workers.orchestrator import transition
 
     sv = db.get(ScriptVersion, svid)
@@ -543,7 +546,11 @@ def approve_script(svid: str, db: Session = Depends(get_db), actor: Actor = Depe
     if st.current_script_version_id != sv.id:
         raise HTTPException(409, "Chỉ duyệt được bản hiện hành")
     if not sv.qa_passed:
-        raise HTTPException(409, "Script QA chưa đạt")
+        from ..workers.jobs import _override_script
+
+        if not _override_script(sv, by=f"{actor.name} (bấm Bỏ qua kiểm tra)", force=force):
+            raise HTTPException(409, "Script QA chưa đạt" if not force else "Kịch bản rỗng — không thể bỏ qua kiểm tra")
+        audit(db, actor.name, "script.qa_override", "script_version", sv.id)
     if st.state == S.NEEDS_REVIEW.value:
         transition(db, st, S.SCRIPT_DRAFT, actor.name, "Biên tập viên xử lý")
     st.script_approved_by = actor.name
