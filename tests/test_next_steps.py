@@ -23,7 +23,7 @@ def test_credentials_point_to_right_settings_tab():
 
 def test_old_fact_rules_and_budget_and_script():
     st = next_steps("NEEDS_REVIEW", ["Claim trọng yếu c1 chưa xác minh"], None)
-    assert st[0]["action"] == "run" and "Chế độ phân tích" in st[0]["text"]
+    assert st[0]["action"] == "run" and "bỏ qua mọi luật xác minh" in st[0]["text"]
     st = next_steps("NEEDS_REVIEW", ["BLOCKED_BY_BUDGET: chạm trần ngày"], None)
     assert ("settings", "budget") in actions(st)
     st = next_steps("NEEDS_REVIEW", ["Script QA: Tin chưa xác minh được ghi rõ nguồn"], None)

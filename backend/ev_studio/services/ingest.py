@@ -169,7 +169,7 @@ def ingest_articles(session: Session, articles: list[RawArticle], writer=None, a
             flags=a.flags, pillar_hits=hits,
         )
         status = ranker.bucket(res.total, s.score_shortlist, s.score_research)
-        if not key or not verified_key:
+        if (not key or not verified_key) and not fc.off_mode(s):
             status = "research" if status == "shortlist" else status
         item = NewsItem(
             title=a.title, url=a.url, canonical_url=canon, publisher=a.publisher, published_at=a.published_at,
@@ -223,7 +223,7 @@ def reapply_fact_mode(session: Session, days: int = 14) -> int:
                                        "evidence_excerpt": c.evidence_excerpt, "claim_type": c.claim_type}, refs, analysis)
             if st in ("unverified", "reported") and st != c.status:
                 c.status, c.verification_reason = st, why
-        key_ok = any(fc.is_fact(c.status, s) and c.is_key for c in n.claims)
+        key_ok = fc.off_mode(s) or any(fc.is_fact(c.status, s) and c.is_key for c in n.claims)
         if analysis and n.status == "research" and key_ok and (n.score or 0) >= s.score_shortlist:
             n.status = "shortlist"
             promoted += 1

@@ -167,6 +167,19 @@ def test_telegram_offline_keeps_private_and_warns(ready_story):
 
 
 def test_gates_block_unlicensed_asset_unverified_claim_and_manual_without_request(ready_story):
+    from ev_studio.config import get_settings
+
+    cfg = get_settings()
+    cfg.fact_mode = "analysis"  # luật "kịch bản đã dùng claim mất nguồn" chỉ có ở chế độ phân tích/chặt (mặc định off bỏ qua)
+    try:
+        _gates_check(ready_story)
+    finally:
+        cfg.fact_mode = "off"
+    res = run_pipeline(ready_story, Providers(youtube=DemoYouTubeClient()))
+    assert res["state"] == "EDITOR_REVIEW"
+
+
+def _gates_check(ready_story):
     with SessionLocal() as s:
         st = s.get(Story, ready_story)
         r = s.get(Render, st.current_render_id)
@@ -182,8 +195,6 @@ def test_gates_block_unlicensed_asset_unverified_claim_and_manual_without_reques
         assert any("c1" in x for x in reasons)
         assert any("MANUAL" in x for x in reasons)
         s.rollback()
-    res = run_pipeline(ready_story, Providers(youtube=DemoYouTubeClient()))
-    assert res["state"] == "EDITOR_REVIEW"
 
 
 def test_review_request_revision_creates_new_version_keeps_old_private(autopilot_story):

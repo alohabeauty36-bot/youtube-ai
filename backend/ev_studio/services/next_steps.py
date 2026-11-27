@@ -50,8 +50,7 @@ def next_steps(state: str, blockers: list[str] | None, last_error: str | None) -
         add("Đã chạm trần ngân sách AI. Tăng trần ở Thiết lập → Ngân sách AI, hoặc chờ sang ngày/tháng mới rồi bấm \"Chạy lại\".",
             "settings", "Mở Thiết lập → Ngân sách AI", "budget")
     if _has(t, ("chua xac minh", "tranh cai", "can xac minh", "claim trong yeu", "freshness")):
-        add("Video dừng theo quy tắc xác minh tin cũ. Chế độ phân tích đã bỏ chặn này (tin một báo đưa vẫn dùng, ghi rõ nguồn) "
-            "— bấm \"Chạy lại\".", "run", "Chạy lại")
+        add("Video dừng theo quy tắc xác minh tin cũ. App đã bỏ qua mọi luật xác minh — bấm \"Chạy lại\".", "run", "Chạy lại")
     if _has(t, ("script qa", "kich ban", "ghi ro nguon", "claim map", "so tu", "chep dai", "trung video")):
         add("Kịch bản chưa qua bước kiểm tra. Bấm \"Chạy lại\" để Biên kịch viết lại, hoặc mở trang Biên tập để sửa tay.",
             "editor", "Mở trang Biên tập")

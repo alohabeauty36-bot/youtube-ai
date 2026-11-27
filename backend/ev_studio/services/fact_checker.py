@@ -5,6 +5,9 @@ Hai chế độ (Thiết lập → Biên tập & thời lượng → "Cách xử
 - `analysis` (mặc định, chủ kênh chọn 27/11/2026): video là BÀI PHÂN TÍCH tin đã đăng, không khẳng định đó là sự thật.
   Claim có nguồn + trích dẫn khớp bài gốc nhưng chưa đủ nguồn đối chiếu → `reported` ("đã đưa tin"): được dùng khi
   kịch bản ghi rõ "theo <báo>". Tin chưa xác minh/tranh cãi KHÔNG còn chặn sản xuất.
+- `off` (mặc định, chủ kênh chọn 27/11/2026 08:04 "bỏ qua hết các luật cần xác minh"): KHÔNG có bước xác minh nào
+  chặn video. Mọi claim (trừ claim chủ kênh loại tay) đều được dùng; ghi nguồn và không thêm thông tin ngoài bài báo chỉ
+  còn là hướng dẫn trong prompt + cảnh báo trong Script QA, không chặn.
 - `strict`: như trước — claim trọng yếu chưa verified hoặc đang tranh cãi → khoá dựng/upload.
 Ở cả hai chế độ, claim KHÔNG có nguồn hoặc trích dẫn không khớp văn bản nguồn vẫn bị loại (không bịa)."""
 from __future__ import annotations
@@ -29,13 +32,26 @@ ATTRIBUTION_WORDS = ("theo ", "cho biet", "dua tin", "thong tin tu", "dan nguon"
                      "thong bao", "neu ra", "cho hay")
 
 
+def fact_mode(settings=None) -> str:
+    return (settings or get_settings()).fact_mode
+
+
 def analysis_mode(settings=None) -> bool:
-    return (settings or get_settings()).fact_mode == "analysis"
+    """Không chặn vì tin chưa xác minh (chế độ analysis hoặc off)."""
+    return fact_mode(settings) in ("analysis", "off")
+
+
+def off_mode(settings=None) -> bool:
+    """Bỏ qua mọi luật xác minh: không bước nào được dừng video vì lý do xác minh."""
+    return fact_mode(settings) == "off"
 
 
 def fact_statuses(settings=None) -> tuple[str, ...]:
     """Trạng thái claim được dùng làm dữ kiện trong kịch bản."""
-    return ("verified", "reported") if analysis_mode(settings) else ("verified",)
+    m = fact_mode(settings)
+    if m == "off":
+        return ("verified", "reported", "unverified", "contested")
+    return ("verified", "reported") if m == "analysis" else ("verified",)
 
 
 def is_fact(status: str, settings=None) -> bool:
@@ -64,9 +80,28 @@ CHẾ ĐỘ PHÂN TÍCH (chủ kênh bật — ưu tiên hơn các câu "chỉ d
 - Claim trong PROHIBITED_OR_UNVERIFIED_CLAIMS (không có nguồn hoặc các nguồn mâu thuẫn) không dùng làm dữ kiện."""
 
 
+OFF_RESEARCH_NOTE = """
+KHÔNG XÁC MINH (chủ kênh tắt mọi luật xác minh — ưu tiên hơn mọi quy tắc về status ở trên)
+- Mọi claim trong danh sách (verified, reported, unverified, contested, inference) đều là thông tin báo chí đã đưa và ĐƯỢC dùng.
+- KHÔNG đưa `blocking_issues` vì claim chưa xác minh, thiếu nguồn thứ hai hay các nguồn chưa thống nhất. `blocking_issues` luôn để [].
+- Claim `contested`: nêu cả các con số khác nhau và báo nào đưa số nào.
+- Vẫn không tự thêm sự kiện, con số, trích dẫn, tên người ngoài tin gốc và danh sách claim."""
+
+OFF_SCRIPT_NOTE = """
+KHÔNG XÁC MINH (chủ kênh tắt mọi luật xác minh — ưu tiên hơn mọi câu "chỉ dùng claim đã xác minh" ở trên)
+- Video là bài PHÂN TÍCH/BÌNH LUẬN tin báo chí đã đăng. Mọi claim trong RESEARCH_PACK đều được dùng, kể cả status
+  unverified/contested/reported, và được đưa vào `editorial_claim_map` bình thường.
+- Nên ghi nguồn khi nêu dữ kiện ("Theo <tên báo>, …"); với số liệu các báo đưa khác nhau, nêu cả hai và nói rõ báo nào đưa số nào.
+- Không để `unresolved_questions_for_editor` chỉ vì thông tin chưa được xác minh — cứ viết, ghi rõ là "theo báo".
+- Không thêm sự kiện, con số, trích dẫn, tên người ngoài RESEARCH_PACK; nhận định phải nói rõ là nhận định."""
+
+
 def prompt_note(kind: str, settings=None) -> str:
-    """Đoạn thêm vào prompt Nghiên cứu/Biên kịch khi bật chế độ phân tích ("" khi chế độ chặt)."""
-    if not analysis_mode(settings):
+    """Đoạn thêm vào prompt Nghiên cứu/Biên kịch theo chế độ xử lý tin ("" khi chế độ chặt)."""
+    m = fact_mode(settings)
+    if m == "off":
+        return OFF_RESEARCH_NOTE if kind == "research" else OFF_SCRIPT_NOTE
+    if m != "analysis":
         return ""
     return ANALYSIS_RESEARCH_NOTE if kind == "research" else ANALYSIS_SCRIPT_NOTE
 

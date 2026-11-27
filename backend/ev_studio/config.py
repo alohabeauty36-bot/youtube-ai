@@ -113,7 +113,8 @@ class Settings(BaseSettings):
 
     # --- media ---
     # analysis: bài phân tích tin đã đăng (tin mới có 1 báo đưa vẫn làm được, phải ghi "theo <báo>"); strict: chỉ claim đã xác minh
-    fact_mode: Literal["analysis", "strict"] = "analysis"
+    # off (mặc định): không luật xác minh nào chặn video
+    fact_mode: Literal["off", "analysis", "strict"] = "off"
     pixabay_api_key: SecretStr | None = None  # nguồn video/ảnh chính (key miễn phí, cấp ngay)
     pexels_api_key: SecretStr | None = None  # chỉ dùng key cũ: Pexels dừng cấp key mới từ ~30/9/2026
     wikimedia_enabled: bool = True

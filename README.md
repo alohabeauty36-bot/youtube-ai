@@ -61,7 +61,7 @@ Giữ nguyên: cấu hình và key đã nhập, **sổ cái ngân sách** (tiề
 
 **Truy cập:** khi mở trên chính máy chạy ứng dụng (127.0.0.1), bạn không cần mật khẩu. Khi truy cập từ máy khác, ứng dụng yêu cầu mật khẩu chủ kênh hoặc biên tập viên. Nếu ứng dụng nằm sau reverse proxy, các request có header proxy **không** được tin là truy cập cục bộ.
 
-**Dành cho lập trình viên:** `make test` chạy 205 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8010.
+**Dành cho lập trình viên:** `make test` chạy 206 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8010.
 
 ### Windows 11
 Nên dùng WSL2 (Ubuntu) với Docker Desktop. Cách native cũng chạy được với Python 3.12, FFmpeg (gyan.dev, có libass) và `pip install vieneu` (CPU/ONNX). GPU CUDA trên Windows cần cài `torch==2.8.0` cu128 trước, theo README của VieNeu.
@@ -74,12 +74,14 @@ Nên dùng WSL2 (Ubuntu) với Docker Desktop. Cách native cũng chạy đượ
 Một công tắc trên **Bảng điều khiển** (hoặc Thiết lập → Tự động hoàn toàn). Khi bật, mỗi 10 phút app tự làm:
 - **Quét tin và Autopilot**: lịch quét và Autopilot được coi là đang bật. Thiếu tin ≥ 80 điểm thì lấy tin trong shortlist (≥ 75 điểm), vẫn bắt buộc có dữ kiện trọng yếu có nguồn. Số video/ngày theo Ban Tăng trưởng, luôn trong trần ngân sách AI.
 
-### Chế độ phân tích (mặc định từ 27/11/2026)
+### Xử lý tin chưa xác minh: off (mặc định) · analysis · strict
 
 Thiết lập → tab **Biên tập & thời lượng** → **Cách xử lý tin chưa xác minh**:
 
-- **analysis** (mặc định): video là **bài phân tích/bình luận tin báo chí đã đăng**, không khẳng định tin đó là sự thật. Thông tin mới có **một báo** đưa (chưa có nguồn thứ hai) có trạng thái **"đã đưa tin"** (`reported`) và **được dùng**, với điều kiện câu nói phải ghi nguồn ngay trong câu ("Theo VnExpress, …", "Tuổi Trẻ đưa tin…"). Script QA chặn câu dùng tin chưa xác minh mà không ghi nguồn. Tin có các báo đưa số khác nhau không còn làm dừng video; số liệu đó chỉ không được nói như dữ kiện. Mô tả video có thêm dòng: video phân tích dựa trên thông tin các báo đã đăng, một số chưa được nguồn thứ hai xác nhận.
-- **Không bịa (ở cả hai chế độ)**: thông tin không có nguồn, hoặc trích dẫn không có trong bài báo gốc, bị loại. Con số, trích dẫn, tên người, ngày tháng chỉ lấy từ hồ sơ tư liệu; nhận định phải nói rõ là nhận định.
+- **off** (mặc định từ 27/11/2026, chủ kênh: "bỏ qua hết các luật cần xác minh"): **không luật xác minh nào dừng video**. Mọi thông tin báo đưa đều được dùng (kể cả chưa có nguồn thứ hai, các báo đưa số khác nhau); không kiểm tra lại nguồn trước khi dựng/tải lên; Autopilot chọn tin theo điểm, không cần thông tin đã xác minh. Kịch bản vẫn được dặn ghi nguồn ("theo <báo>") và không thêm thông tin ngoài bài báo, nhưng thiếu chỉ là **cảnh báo** trong Script QA. Các kiểm tra không thuộc xác minh vẫn giữ: chép dài từ bài báo, trùng video cũ, thời lượng ≥ 10 phút, giấy phép hình ảnh, video tải lên RIÊNG TƯ.
+
+- **analysis**: video là **bài phân tích/bình luận tin báo chí đã đăng**, không khẳng định tin đó là sự thật. Thông tin mới có **một báo** đưa (chưa có nguồn thứ hai) có trạng thái **"đã đưa tin"** (`reported`) và **được dùng**, với điều kiện câu nói phải ghi nguồn ngay trong câu ("Theo VnExpress, …", "Tuổi Trẻ đưa tin…"). Script QA chặn câu dùng tin chưa xác minh mà không ghi nguồn. Tin có các báo đưa số khác nhau không còn làm dừng video; số liệu đó chỉ không được nói như dữ kiện. Mô tả video có thêm dòng: video phân tích dựa trên thông tin các báo đã đăng, một số chưa được nguồn thứ hai xác nhận.
+- **Không bịa (ở chế độ analysis và strict)**: thông tin không có nguồn, hoặc trích dẫn không có trong bài báo gốc, bị loại. Con số, trích dẫn, tên người, ngày tháng chỉ lấy từ hồ sơ tư liệu; nhận định phải nói rõ là nhận định.
 - **strict**: như trước: chỉ dùng thông tin có nguồn chính thức hoặc ≥ 2 báo uy tín xác nhận; tin chưa xác minh/tranh cãi chặn dựng và tải lên.
 
 Đổi chế độ xong, lần quét tin hoặc lượt Autopilot kế tiếp tự xếp lại tin trong 14 ngày gần nhất theo chế độ mới.
@@ -181,7 +183,7 @@ prompts/pillars/P1|P2|P3.md       hồ sơ trụ cột
 prompts/reference/…               Mục IV nguyên văn (tham khảo văn phong)
 frontend/                         Next.js 15 + TypeScript (xuất tĩnh → backend/ev_studio/web_dist, backend phục vụ)
 migrations/                       Alembic
-tests/                            205 test
+tests/                            206 test
 run.py, start.bat, start.sh       chạy bằng một lệnh
 backend/ev_studio/runtime_config.py  cấu hình API lưu mã hoá trong DB
 backend/ev_studio/agents/            Ban Tài chính (budget, pricing) + bộ não phòng ban (brain, memory, teachers, learning, writer) + Ban Tăng trưởng (growth)
