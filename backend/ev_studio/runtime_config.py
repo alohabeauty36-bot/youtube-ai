@@ -93,11 +93,15 @@ FIELDS: list[ConfigField] = [
     ConfigField("agent_master_audit_rate", "Bậc thầy: tỷ lệ việc vẫn gửi thầy kiểm tra", "agents", "float",
                 help="0 = phòng đạt Bậc thầy tự làm hoàn toàn, chỉ nhờ thầy khi bài của trò không qua QA."),
     ConfigField("full_auto", "Bật Tự động hoàn toàn", "auto", "bool",
-                help="Tự quét tin, tự chọn tin, tự làm video, tự sửa lỗi (không được thì bỏ tin), tự tải lên và tự công khai sau "
+                help="Tự quét tin, tự chọn tin, tự làm video, tự sửa lỗi (không được thì để bạn xem), tự tải lên và tự công khai sau "
                      "thời gian chờ nếu bạn không bấm Dừng trên Telegram. Luôn trong trần ngân sách AI."),
     ConfigField("auto_publish_delay_minutes", "Tự công khai sau (phút) — 0 = không tự công khai", "auto", "int",
                 help="Video tải lên RIÊNG TƯ, Telegram báo kèm nút Dừng; hết thời gian này mà không bị Dừng thì app công khai."),
-    ConfigField("auto_heal_max_attempts", "Số lần tự chạy lại video lỗi trước khi bỏ", "auto", "int"),
+    ConfigField("auto_heal", "Tự xử lý lỗi (mọi video)", "auto", "bool",
+                help="Bật (mặc định): video bị dừng được app tự chẩn đoán và sửa mỗi 10 phút (viết lại kịch bản, bỏ qua kiểm tra, "
+                     "chờ ngân sách, chạy lại…). Không tự xử lý được (thiếu key, hoặc đã thử đủ số lần) thì giữ video, ghi "
+                     "\"Cần bạn xem\" và nhắn Telegram. Không cần bật Tự động hoàn toàn."),
+    ConfigField("auto_heal_max_attempts", "Số lần tự xử lý mỗi video trước khi nhờ bạn xem", "auto", "int"),
     ConfigField("kpi_monthly_revenue_usd", "KPI doanh thu quảng cáo mỗi tháng (USD)", "growth", "float",
                 help="Doanh thu quảng cáo YouTube ước tính (estimatedAdRevenue). 0 = chưa đặt KPI. Ban Tăng trưởng "
                      "đối chiếu mỗi ngày và tự chỉnh kế hoạch sản xuất để bám KPI."),

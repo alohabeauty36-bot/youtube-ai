@@ -97,8 +97,17 @@ def ser_claim(c: Claim) -> dict:
 def ser_story(st: Story) -> dict:
     from ..services.next_steps import next_steps
 
+    from ..workers import autoops
+
     out = _ser_story_fields(st)
-    out["next_steps"] = next_steps(st.state, st.blockers, st.last_error,
+    out["attention"] = None
+    if st.state in ("NEEDS_REVIEW", "FAILED_RETRYABLE", "FAILED_PERMANENT"):
+        why = " ".join([*(st.blockers or []), st.last_error or ""])
+        out["attention"] = ("owner" if autoops.needs_owner(st) or autoops.diagnose(why) == "credentials" or not autoops.heal_on()
+                            else "healing")
+    out["heal_max"] = get_settings().auto_heal_max_attempts
+    out["next_steps"] = next_steps(st.state, st.blockers, st.last_error, attention=out["attention"],
+                                   attempts=st.auto_heal_attempts, max_attempts=out["heal_max"],
                                    awaiting_script_approval=bool(st.current_script_version_id and not st.script_approved_by
                                                                  and st.mode != "AUTOPILOT_PRIVATE"))
     return out
@@ -408,8 +417,12 @@ def hold_story(sid: str, body: HoldIn = Body(default=HoldIn()), db: Session = De
 
 @app.post("/api/stories/{sid}/run")
 def run_story(sid: str, db: Session = Depends(get_db), actor: Actor = Depends(current_actor)):
-    """Chạy tiếp tới điểm dừng kế tiếp (chờ duyệt script / chờ bấm upload / hoàn tất)."""
-    return _submit(get_story(db, sid), actor)
+    """Chạy tiếp tới điểm dừng kế tiếp (chờ duyệt script / chờ bấm upload / hoàn tất). Chủ kênh bấm → app tự xử lý lại từ đầu."""
+    st = get_story(db, sid)
+    if st.auto_heal_attempts:
+        st.auto_heal_attempts = 0
+        db.commit()
+    return _submit(st, actor)
 
 
 class DismissIn(BaseModel):

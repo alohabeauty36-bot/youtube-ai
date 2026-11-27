@@ -82,7 +82,8 @@ class Settings(BaseSettings):
     # --- Tự động hoàn toàn: một công tắc cho Autopilot + lịch quét + tự sửa lỗi + tự công khai có hẹn giờ ---
     full_auto: bool = False
     auto_publish_delay_minutes: int = 120  # 0 = không tự công khai (vẫn giữ riêng tư như cũ)
-    auto_heal_max_attempts: int = 2  # tự chạy lại video lỗi tối đa N lần, vẫn hỏng thì bỏ tin đó
+    auto_heal: bool = True  # tự xử lý lỗi cho mọi video (không cần bật Tự động hoàn toàn)
+    auto_heal_max_attempts: int = 3  # tự sửa tối đa N lần, vẫn hỏng thì giữ video cho chủ kênh xem (không bỏ)
 
     # --- Ban Tăng trưởng: theo dõi kênh bằng YouTube Analytics, chạy theo KPI doanh thu tháng ---
     kpi_monthly_revenue_usd: float = 0.0  # 0 = chưa đặt KPI. Doanh thu quảng cáo YouTube (estimatedAdRevenue), USD

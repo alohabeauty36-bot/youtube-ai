@@ -24,7 +24,8 @@ def _has(text: str, words) -> bool:
     return any(w in text for w in words)
 
 
-def next_steps(state: str, blockers: list[str] | None, last_error: str | None, awaiting_script_approval: bool = False) -> list[dict]:
+def next_steps(state: str, blockers: list[str] | None, last_error: str | None, awaiting_script_approval: bool = False,
+               attention: str | None = None, attempts: int = 0, max_attempts: int = 3) -> list[dict]:
     if awaiting_script_approval and state == "SCRIPT_DRAFT":
         return [{"text": "Kịch bản đã viết xong, đang chờ bạn duyệt. Bấm \"Duyệt & dựng\" để làm video (bỏ qua kiểm tra nếu còn lỗi), "
                          "hoặc mở trang Biên tập để đọc trước.", "action": "approve", "label": "Duyệt & dựng"},
@@ -33,6 +34,10 @@ def next_steps(state: str, blockers: list[str] | None, last_error: str | None, a
     if state not in STOP_STATES:
         return []
     raw = " | ".join([*(blockers or []), last_error or ""])
+    head: list[dict] = []
+    if attention == "healing":
+        head.append({"action": "info", "label": "", "text": f"App đang tự xử lý lỗi này (đã thử {attempts}/{max_attempts} lần; "
+                     "lần tới trong khoảng 10–20 phút). Bạn không cần làm gì — muốn xử lý ngay thì dùng các nút bên dưới."})
     t = strip_accents(raw).lower()
     steps: list[dict] = []
 
@@ -70,4 +75,4 @@ def next_steps(state: str, blockers: list[str] | None, last_error: str | None, a
     if not any(s["action"] == "run" for s in steps):
         add("Sau khi xử lý xong, bấm \"Chạy lại\" để video chạy tiếp từ chỗ đang dừng.", "run", "Chạy lại")
     add("Không muốn làm video này nữa? Bấm \"Bỏ video\" (tin sẽ không bị chọn lại).", "dismiss", "Bỏ video")
-    return steps
+    return head + steps
