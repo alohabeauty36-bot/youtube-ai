@@ -69,7 +69,10 @@ def test_evidence_must_match_source_text():
         assert st == "unverified" and "không khớp" in reason
 
 
-def test_no_source_is_unverified_and_blocks():
+def test_no_source_is_unverified_and_blocks(monkeypatch):
+    from ev_studio.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "fact_mode", "analysis")
     out = fc.check_claims([{"claim_key": "c1", "text": "x", "claim_type": "price", "source_ids": [], "is_key": True}], {})
     assert out[0]["status"] == "unverified"
     assert fc.blocking_claims(out, analysis=False)
@@ -96,7 +99,8 @@ def test_script_qa_requires_source_for_reported_claims():
                 "title_options": [{"title": "a"}, {"title": "b"}, {"title": "c"}], "production_notes": {}}
 
     def check(o, analysis):
-        qa = run_script_qa(o, pack_claims=pack, source_texts=[], recent_scripts=[], analysis=analysis, publishers=["VnExpress"])
+        qa = run_script_qa(o, pack_claims=pack, source_texts=[], recent_scripts=[], analysis=analysis, publishers=["VnExpress"],
+                           off=False)
         return {c["name"]: c["ok"] for c in qa.checks}
 
     good = check(out("Theo VnExpress, giá xe giảm 10%."), True)
@@ -131,12 +135,34 @@ def test_reapply_fact_mode_promotes_single_source_news(db):
     db.add(n)
     db.flush()
     try:
-        assert s.fact_mode == "analysis"  # mặc định
+        s.fact_mode = "analysis"
         assert ingest.reapply_fact_mode(db) >= 1
         assert n.status == "shortlist" and n.claims[0].status == "reported"
         s.fact_mode = "strict"
         ingest.reapply_fact_mode(db)
         assert n.status == "research" and n.claims[0].status == "unverified"
     finally:
-        s.fact_mode = "analysis"
+        s.fact_mode = "off"
         db.rollback()
+
+
+def test_off_mode_never_blocks_for_verification():
+    """Chế độ off (mặc định, chủ kênh: "bỏ qua hết các luật cần xác minh"): không luật xác minh nào chặn."""
+    from ev_studio.config import get_settings
+    from ev_studio.services.script_qa import run_script_qa
+
+    s = get_settings()
+    assert s.fact_mode == "off"
+    assert fc.off_mode() and fc.analysis_mode() and fc.is_fact("unverified") and fc.is_fact("contested")
+    assert not fc.is_fact("removed") and "blocking_issues` luôn để []" in fc.prompt_note("research")
+    pack = [{"claim_key": "c1", "text": "Giá xe giảm 10%", "status": "contested", "source_ids": [], "is_key": True}]
+    out = {"spoken_script": "Giá xe giảm 10%. Hẹn gặp lại.", "closing_teaser": "Hẹn gặp lại.",
+           "unresolved_questions_for_editor": ["Các báo đưa số khác nhau"],
+           "editorial_claim_map": [{"claim_id": "c1", "source_ids": [], "relevant_script_excerpt": "Giá xe giảm 10%."}],
+           "title_options": [{"title": "a"}, {"title": "b"}, {"title": "c"}], "production_notes": {}}
+    qa = run_script_qa(out, pack_claims=pack, source_texts=[], recent_scripts=[])
+    assert qa.passed, [c for c in qa.checks if c["blocking"] and not c["ok"]]
+    # chép dài từ nguồn / lặp video cũ vẫn chặn (không phải luật xác minh)
+    src = " ".join(["xe điện giá rẻ bán chạy nhất tháng này tại Việt Nam theo số liệu hiệp hội"] * 3)
+    qa2 = run_script_qa({**out, "spoken_script": src + " Hẹn gặp lại."}, pack_claims=pack, source_texts=[src], recent_scripts=[])
+    assert not qa2.passed

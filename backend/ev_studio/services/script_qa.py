@@ -41,12 +41,16 @@ def sentence_count(p: str) -> int:
 
 def run_script_qa(out: dict, *, pack_claims: list[dict], source_texts: list[str], recent_scripts: list[str],
                   supported_phrases_text: str = "", is_demo: bool = False, analysis: bool | None = None,
-                  publishers: list[str] | None = None) -> QAResult:
-    from .fact_checker import analysis_mode, has_attribution
+                  publishers: list[str] | None = None, off: bool | None = None) -> QAResult:
+    from .fact_checker import analysis_mode, has_attribution, off_mode
 
     if analysis is None:
         analysis = analysis_mode()
-    facts = ("verified", "reported") if analysis else ("verified",)
+    if off is None:
+        off = off_mode()
+    analysis = analysis or off
+    facts = ("verified", "reported", "unverified", "contested") if off else ("verified", "reported") if analysis else ("verified",)
+    hard = not off  # chế độ off: mọi kiểm tra liên quan xác minh chỉ cảnh báo, không chặn
     r = QAResult(passed=True)
     spoken: str = out.get("spoken_script", "")
     r.add("spoken_script không rỗng", bool(spoken.strip()), "Claude trả unresolved_questions" if not spoken.strip() else "")
@@ -54,7 +58,7 @@ def run_script_qa(out: dict, *, pack_claims: list[dict], source_texts: list[str]
         r.add("Câu hỏi chưa giải quyết", False, "; ".join(out.get("unresolved_questions_for_editor", [])))
         return r
     if out.get("unresolved_questions_for_editor"):
-        r.add("Không còn câu hỏi chưa giải quyết", False, "; ".join(out["unresolved_questions_for_editor"]))
+        r.add("Không còn câu hỏi chưa giải quyết", False, "; ".join(out["unresolved_questions_for_editor"]), blocking=hard)
 
     # sạch để TTS
     sd = STAGE_DIRECTION.findall(spoken)
@@ -73,24 +77,25 @@ def run_script_qa(out: dict, *, pack_claims: list[dict], source_texts: list[str]
             bad.append(f"{entry['claim_id']} có status {c['status']}")
         elif not set(entry.get("source_ids", [])) & set(c.get("source_ids", [])) and c["status"] in facts:
             bad.append(f"{entry['claim_id']} gắn source_id sai")
-    r.add("Claim map chỉ dùng claim đã xác minh" if not analysis else "Claim map chỉ dùng claim có nguồn", not bad, "; ".join(bad))
+    r.add("Claim map chỉ dùng claim đã xác minh" if not analysis else "Claim map chỉ dùng claim có nguồn", not bad, "; ".join(bad),
+          blocking=hard)
     verified_keys = {c["claim_key"] for c in pack_claims if c["status"] in facts and c.get("is_key", True)}
     mapped = {e["claim_id"] for e in out.get("editorial_claim_map", [])}
-    r.add("Có ít nhất một claim trọng yếu được dẫn", bool(verified_keys & mapped), f"mapped={sorted(mapped)}")
+    r.add("Có ít nhất một claim trọng yếu được dẫn", bool(verified_keys & mapped), f"mapped={sorted(mapped)}", blocking=hard)
     if analysis:  # tin mới có một báo đưa: câu dùng nó phải ghi nguồn ("theo <báo>")
         no_attr = [e["claim_id"] for e in out.get("editorial_claim_map", [])
                    if by_key.get(e["claim_id"], {}).get("status") == "reported"
                    and not has_attribution(e.get("relevant_script_excerpt", ""), publishers or [])]
-        r.add("Tin chưa xác minh được ghi rõ nguồn (\"theo <báo>\")", not no_attr, ",".join(no_attr))
+        r.add("Tin chưa xác minh được ghi rõ nguồn (\"theo <báo>\")", not no_attr, ",".join(no_attr), blocking=hard)
     for e in out.get("production_notes", {}).get("key_on_screen_facts", []):
         if e["claim_id"] not in by_key or by_key[e["claim_id"]]["status"] not in facts:
-            r.add("Dữ kiện trên màn hình có claim verified", False, e["claim_id"])
+            r.add("Dữ kiện trên màn hình có claim verified", False, e["claim_id"], blocking=hard)
             break
     # claim bị cấm (unverified/contested) không được nhắc tới
     norm_spoken = strip_accents(spoken)
     leaked = [c["claim_key"] for c in pack_claims if c["status"] in ("unverified", "contested")
               and c.get("value") and len(str(c["value"])) >= 2 and strip_accents(c["text"]) in norm_spoken]
-    r.add("Không dùng claim chưa xác minh/tranh cãi", not leaked, ",".join(leaked))
+    r.add("Không dùng claim chưa xác minh/tranh cãi", not leaked or off, ",".join(leaked), blocking=hard)
 
     # tiêu đề
     titles = out.get("title_options", [])
@@ -98,7 +103,7 @@ def run_script_qa(out: dict, *, pack_claims: list[dict], source_texts: list[str]
     supported = strip_accents(supported_phrases_text)
     over = [t["title"] for t in titles if any(b in strip_accents(t["title"]) and b not in supported for b in BANNED_UNSUPPORTED)]
     over += [p for p in BANNED_UNSUPPORTED if p in norm_spoken and p not in supported]
-    r.add("Không khẳng định quá mức thiếu nguồn", not over, "; ".join(over))
+    r.add("Không khẳng định quá mức thiếu nguồn", not over, "; ".join(over), blocking=hard)
 
     # closing teaser cuối bài
     teaser = out.get("closing_teaser", "").strip()

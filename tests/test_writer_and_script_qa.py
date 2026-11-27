@@ -14,6 +14,14 @@ CLAIMS = [{"claim_key": "c1", "text": "Ưu đãi đến 31/12", "status": "verif
           {"claim_key": "c2", "text": "Có 150 trạm đang vận hành", "status": "contested", "source_ids": ["s2"], "value": "150", "is_key": True}]
 
 
+@pytest.fixture(autouse=True)
+def _strict_fact_mode(monkeypatch):
+    """Các test này kiểm luật xác minh của Script QA → chạy ở chế độ chặt (mặc định app là off: bỏ qua xác minh)."""
+    from ev_studio.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "fact_mode", "strict")
+
+
 def good_output(**over):
     spoken = ("Có một điều kiện nhỏ quyết định tất cả. Theo hãng, ưu đãi đến 31/12.\n\n"
               "Phần còn lại là phân tích của chúng ta. Ở video tiếp theo, ta sẽ xem điều gì ở lại.")

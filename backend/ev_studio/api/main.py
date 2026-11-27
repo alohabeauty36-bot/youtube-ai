@@ -95,6 +95,14 @@ def ser_claim(c: Claim) -> dict:
 
 
 def ser_story(st: Story) -> dict:
+    from ..services.next_steps import next_steps
+
+    out = _ser_story_fields(st)
+    out["next_steps"] = next_steps(st.state, st.blockers, st.last_error)
+    return out
+
+
+def _ser_story_fields(st: Story) -> dict:
     return {k: getattr(st, k) for k in ("id", "news_item_id", "parent_story_id", "revision", "pillar", "topic", "core_question",
                                         "editorial_notes", "state", "resume_state", "mode", "autopilot_authorized",
                                         "upload_requested_by", "script_approved_by", "channel_id", "current_script_version_id",
@@ -400,6 +408,39 @@ def hold_story(sid: str, body: HoldIn = Body(default=HoldIn()), db: Session = De
 def run_story(sid: str, db: Session = Depends(get_db), actor: Actor = Depends(current_actor)):
     """Chạy tiếp tới điểm dừng kế tiếp (chờ duyệt script / chờ bấm upload / hoàn tất)."""
     return _submit(get_story(db, sid), actor)
+
+
+class DismissIn(BaseModel):
+    note: str | None = None
+
+
+@app.post("/api/stories/{sid}/dismiss")
+def dismiss_story(sid: str, body: DismissIn = Body(default=DismissIn()), db: Session = Depends(get_db),
+                  actor: Actor = Depends(current_actor)):
+    """Bỏ một video đang dừng (Cần người xử lý / Lỗi) → REJECTED; tin gốc không bị Autopilot chọn lại. Không đụng YouTube."""
+    from ..models import ReviewEvent
+    from ..state_machine import InvalidTransition, StoryState
+    from ..workers.executor import is_running
+    from ..workers.jobs import transition
+
+    from ..services.next_steps import STOP_STATES
+
+    st = get_story(db, sid)
+    if st.state not in STOP_STATES:
+        raise HTTPException(409, f"Chỉ bỏ được video đang dừng hoặc lỗi (hiện: {st.state}). Video đã tải lên thì dùng nút Loại ở trang Duyệt.")
+    if is_running(st.id):
+        raise HTTPException(409, "Video đang chạy, đợi chạy xong rồi mới bỏ được")
+    try:
+        transition(db, st, StoryState.REJECTED, actor.name, body.note or "Chủ kênh bỏ video")
+    except InvalidTransition:
+        raise HTTPException(409, f"Không bỏ được video ở trạng thái {st.state} (chỉ bỏ được video đang dừng hoặc lỗi; "
+                                 "video đã tải lên thì dùng nút Loại ở trang Duyệt)") from None
+    db.add(ReviewEvent(story_id=st.id, action="dismissed", actor=actor.name, via="dashboard", note=body.note))
+    if st.news_item is not None and st.news_item.status == "shortlist":
+        st.news_item.status = "dismissed"
+    audit(db, actor.name, "story.dismissed", "story", st.id, note=body.note or "")
+    db.commit()
+    return {"story_id": st.id, "state": st.state}
 
 
 @app.post("/api/stories/{sid}/research")

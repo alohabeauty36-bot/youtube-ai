@@ -148,8 +148,9 @@ FIELDS: list[ConfigField] = [
                 help="Pexels đã tạm dừng cấp key mới (từ cuối 9/2026). Có key cũ thì nhập để thêm nguồn; không có thì bỏ trống."),
     ConfigField("wikimedia_enabled", "Tìm ảnh trên Wikimedia Commons", "media", "bool"),
     ConfigField("wikimedia_user_agent", "User-Agent gửi Wikimedia (kèm email liên hệ)", "media", "text"),
-    ConfigField("fact_mode", "Cách xử lý tin chưa xác minh", "editorial", "select", ("analysis", "strict"),
-                help="analysis (mặc định): video là bài PHÂN TÍCH tin báo chí đã đăng — tin mới có một báo đưa vẫn làm được, "
+    ConfigField("fact_mode", "Cách xử lý tin chưa xác minh", "editorial", "select", ("off", "analysis", "strict"),
+                help="off (mặc định): bỏ qua mọi luật xác minh — không bước nào dừng video vì tin chưa xác minh; kịch bản vẫn được "
+                     "dặn ghi nguồn và không thêm thông tin ngoài bài báo (chỉ cảnh báo, không chặn). analysis: video là bài PHÂN TÍCH tin báo chí đã đăng — tin mới có một báo đưa vẫn làm được, "
                      "kịch bản phải ghi rõ \"theo <tên báo>\"; con số/trích dẫn phải có trong bài gốc. strict: chỉ dùng thông tin "
                      "đã được nguồn chính thức hoặc ≥2 báo uy tín xác nhận, tin chưa xác minh bị chặn."),
     ConfigField("duration_target_seconds", "Thời lượng mục tiêu (giây)", "editorial", "float",

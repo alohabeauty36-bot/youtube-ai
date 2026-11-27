@@ -127,6 +127,9 @@ def fact_check_job(session: Session, story: Story, p: Providers) -> dict:
         if c.editor_note and c.status == "verified" and c.verification_reason and c.verification_reason.startswith("Biên tập viên"):
             continue  # đã được biên tập viên xác minh thủ công với nguồn
         c.status, c.verification_reason = r["status"], r["verification_reason"]
+    if fc.off_mode():  # bỏ qua mọi luật xác minh: không chặn, không gọi mạng kiểm tra lại nguồn
+        story.freshness_checked_at = now()
+        return {"verified": sum(c.status == "verified" for c in claims), "claims": len(claims), "mode": "off"}
     analysis = fc.analysis_mode()
     blockers = fc.blocking_claims(claims, analysis)
     if not any(fc.is_fact(c.status) and c.is_key for c in claims):
@@ -156,7 +159,7 @@ def research_job(session: Session, story: Story, p: Providers) -> dict:
     news = story.news_item
     claims = story_claims(session, story)
     usable = [d for d in claim_dicts(claims) if fc.is_fact(d["status"]) or d["status"] == "inference"]
-    avoid = [d for d in claim_dicts(claims) if d["status"] in ("unverified", "contested")]
+    avoid = [d for d in claim_dicts(claims) if not fc.is_fact(d["status"]) and d["status"] not in ("inference", "removed")]
     sources = story_sources(news)
     recent = [t for (t,) in session.execute(select(Story.topic).where(Story.id != story.id).order_by(Story.created_at.desc()).limit(10))]
     ctx = {"news": {"title": news.title, "url": news.url, "publisher": news.publisher,
@@ -172,7 +175,11 @@ def research_job(session: Session, story: Story, p: Providers) -> dict:
     if unknown:
         raise RetryableError(f"ResearchPack nhắc source_id không tồn tại: {sorted(unknown)}")
     if llm.get("blocking_issues"):
-        raise GateBlocked([f"ResearchPack: {b}" for b in llm["blocking_issues"]])
+        if fc.off_mode():  # không xác minh: vấn đề AI nêu ra chỉ ghi lại làm lưu ý, không dừng video
+            llm["risk_notes"] = list(llm.get("risk_notes") or []) + [f"Lưu ý: {b}" for b in llm["blocking_issues"]]
+            llm["blocking_issues"] = []
+        else:
+            raise GateBlocked([f"ResearchPack: {b}" for b in llm["blocking_issues"]])
     version = (session.scalar(select(func.max(ResearchPack.version)).where(ResearchPack.story_id == story.id)) or 0) + 1
     content = {**llm, "topic": story.topic, "pillar": story.pillar, "news": ctx["news"], "sources": sources,
                "claims": usable, "claims_to_avoid": avoid}
@@ -684,7 +691,7 @@ def seo_job(session: Session, story: Story, p: Providers) -> dict:
                                  chapters=chapters, sources=sources, asset_credits=credits,
                                  has_estimates="phép tính ví dụ" in sv.spoken_script or "ví dụ" in sv.spoken_script,
                                  pillar=story.pillar, is_demo=story.is_demo,
-                                 analysis=any(c.status == "reported" for c in story_claims(session, story)))
+                                 analysis=fc.analysis_mode() or any(c.status == "reported" for c in story_claims(session, story)))
     tags = seo.build_tags(story.pillar, news.model_names or [], news.entities or [], idem_tag)
     v = SEOVariant(story_id=story.id, render_id=r.id, title_options=content["title_options"],
                    selected_index=content["selected_title_index"], description=desc, tags=tags,
@@ -744,7 +751,7 @@ def upload_gate(session: Session, story: Story) -> list[str]:
         reasons.append("File render không khớp checksum đã QA")
     claims = story_claims(session, story)
     reasons += fc.blocking_claims(claims)
-    if fc.analysis_mode() and r:
+    if fc.analysis_mode() and not fc.off_mode() and r:
         # chế độ phân tích không chặn vì tin chưa xác minh, nhưng claim mà KỊCH BẢN ĐÃ DÙNG phải còn nguồn (không bịa)
         sv_r = session.get(ScriptVersion, r.script_version_id)
         used = {e["claim_id"] for e in (sv_r.content.get("editorial_claim_map") or [])} if sv_r else set()
@@ -754,7 +761,7 @@ def upload_gate(session: Session, story: Story) -> list[str]:
                 reasons.append(f"Kịch bản dùng claim {c.claim_key} nhưng claim này giờ là '{c.status}' (không còn nguồn hợp lệ)")
     if any(c.status == "verified" and not c.source_url for c in claims):
         reasons.append("Có claim verified thiếu source_url")
-    if not fc.freshness_ok(story.freshness_checked_at):
+    if not fc.off_mode() and not fc.freshness_ok(story.freshness_checked_at):
         reasons.append("freshness_check quá hạn — cần chạy lại FactCheckJob")
     if r:
         scenes = session.scalars(select(Scene).where(Scene.story_id == story.id, Scene.script_version_id == r.script_version_id))
@@ -1196,7 +1203,7 @@ def autopilot_tick(session: Session, providers: Providers | None = None) -> dict
         if n.id in used:
             continue
         claims = list(n.claims)
-        if fc.blocking_claims(claims) or not any(fc.is_fact(c.status) and c.is_key for c in claims):
+        if not fc.off_mode() and (fc.blocking_claims(claims) or not any(fc.is_fact(c.status) and c.is_key for c in claims)):
             continue
         st = Story(news_item_id=n.id, pillar=n.pillar or "P1", topic=n.title.replace("[DEMO] ", ""), mode="AUTOPILOT_PRIVATE",
                    autopilot_authorized=True, channel_id=ch.id, is_demo=n.is_demo)
