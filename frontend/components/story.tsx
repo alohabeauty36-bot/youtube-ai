@@ -31,15 +31,16 @@ export function NextSteps({ s, reload, compact = false }: { s: any; reload: () =
       setTimeout(reload, 600);
     } catch (e) { setErr(e); } finally { setBusy(""); }
   };
-  const btn = (st: any, i: number) => <button key={i} className={st.action === "run" || st.action === "approve" ? "primary small" : st.action === "dismiss" ? "danger small" : "small"}
+  const btn = (st: any, i: number) => st.action === "info" ? null : <button key={i} className={st.action === "run" || st.action === "approve" ? "primary small" : st.action === "dismiss" ? "danger small" : "small"}
     disabled={!!busy || s.running} onClick={() => act(st)}>{busy === st.action ? "Đang gửi…" : st.label}</button>;
   if (compact) {
-    const uniq = steps.filter((st, i) => steps.findIndex(x => x.action === st.action && x.tab === st.tab) === i);
-    return <div className="row">{uniq.map(btn)}<ErrorBox error={err} /></div>;
+    const uniq = steps.filter((st, i) => st.action !== "info" && steps.findIndex(x => x.action === st.action && x.tab === st.tab) === i);
+    return <div className="row">{s.attention === "healing" && <Badge kind="info">App đang tự xử lý ({s.auto_heal_attempts}/{s.heal_max})</Badge>}
+      {s.attention === "owner" && <Badge kind="warn">Cần bạn xem</Badge>}{uniq.map(btn)}<ErrorBox error={err} /></div>;
   }
   return (
-    <div className="hint">
-      <b>Việc cần làm</b>
+    <div className={s.attention === "owner" ? "error" : "hint"}>
+      <b>{s.attention === "healing" ? "App đang tự xử lý" : s.attention === "owner" ? "Cần bạn xem" : "Việc cần làm"}</b>
       <ol style={{ margin: "6px 0 4px", paddingLeft: 20 }}>{steps.map((st, i) => <li key={i} style={{ marginBottom: 6 }}>{st.text} {btn(st, i)}</li>)}</ol>
       <ErrorBox error={err} />
     </div>

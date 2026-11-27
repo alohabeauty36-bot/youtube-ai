@@ -1,7 +1,13 @@
-"""Tự động hoàn toàn (`full_auto`): chạy mỗi 10 phút.
+"""Chạy mỗi 10 phút. Gồm tự xử lý lỗi (`auto_heal`, mặc định bật, cho MỌI video) và Tự động hoàn toàn (`full_auto`).
 
-1. Tự sửa: video Autopilot bị dừng (NEEDS_REVIEW / FAILED_*) → chạy lại tối đa `auto_heal_max_attempts` lần; vẫn hỏng → bỏ tin đó
-   (REJECTED, ghi lý do), Autopilot chọn tin khác. Không đụng lỗi hết ngân sách (đợi sang ngày) và lỗi thiếu key/OAuth (chủ kênh phải sửa).
+1. Tự xử lý lỗi (chủ kênh 27/11/2026: "gặp lỗi các bạn tự xử lý cho tôi, không thể xử lý hãy để tôi xem"):
+   video dừng (NEEDS_REVIEW / FAILED_*) → app chẩn đoán và tự sửa theo loại lỗi, tối đa `auto_heal_max_attempts` lần:
+   - kịch bản trượt kiểm tra → bỏ qua kiểm tra (nếu bật) hoặc viết kịch bản mới;
+   - video dưới 10 phút → quay lại bước kịch bản, viết bản mới dài hơn;
+   - hết ngân sách → đợi ngân sách ngày mới rồi chạy tiếp;
+   - lỗi mạng/dịch vụ bận/lỗi khác → chạy lại.
+   Không tự xử lý được (thiếu key/kết nối, hoặc đã thử đủ số lần) → GIỮ video, ghi "🔎 Cần bạn xem" + lý do, nhắn Telegram
+   một lần. Không bao giờ tự bỏ video.
 2. Autopilot: mở tin mới nếu còn suất trong ngày và còn ngân sách (thay cho việc chờ lượt quét 3 giờ).
 3. Tự công khai: video đã tải RIÊNG TƯ, Telegram đã báo kèm nút Dừng, hết thời gian chờ, không bị Dừng, kiểm chứng lại vẫn ổn
    → công khai (services/youtube/publish.py) và đọc lại. YouTube giữ riêng tư (project API chưa audit) → dừng, báo chủ kênh.
@@ -22,7 +28,8 @@ from ..state_machine import StoryState as S
 
 log = logging.getLogger(__name__)
 HEAL_STATES = (S.NEEDS_REVIEW.value, S.FAILED_RETRYABLE.value, S.FAILED_PERMANENT.value, S.UPLOADED_PRIVATE.value)
-HEAL_COOLDOWN = timedelta(minutes=15)
+HEAL_COOLDOWN = timedelta(minutes=10)
+OWNER_MARK = "🔎 Cần bạn xem:"
 PUBLISHABLE = (S.EDITOR_REVIEW.value, S.APPROVED_PRIVATE.value)
 LOCKED_MSG = ("YouTube giữ video ở chế độ RIÊNG TƯ dù app đã yêu cầu công khai. Nguyên nhân thường gặp: project Google Cloud "
               "chưa qua kiểm định (audit) YouTube API, nên mọi video tải lên qua API bị khoá riêng tư. Nộp đơn audit theo "
@@ -81,13 +88,76 @@ def _resume(story_id: str, providers) -> dict:
     return run_pipeline(story_id, providers, actor="autoheal")
 
 
+def heal_on() -> bool:
+    s = get_settings()
+    return bool(s.auto_heal or s.full_auto)
+
+
+def diagnose(why: str) -> str:
+    """Loại lỗi → cách tự sửa. credentials: app không tự sửa được (chủ kênh phải nhập key/kết nối lại)."""
+    from ..services.ranker import strip_accents
+
+    t = strip_accents(why or "").lower()
+    if "blocked_by_credentials" in t or any(w in t for w in ("thieu key", "tu choi key", "tu choi token", "khong nhan api key",
+                                                             "chua chon kenh", "chua ket noi", "invalid_grant")):
+        return "credentials"
+    if "blocked_by_budget" in t:
+        return "budget"
+    if any(w in t for w in ("khong duoi 10 phut", "duoi 10 phut", "media qa: thoi luong")):
+        return "too_short"
+    if "script qa" in t:
+        return "script_qa"
+    return "other"
+
+
+def needs_owner(st: Story) -> bool:
+    return any(str(b).startswith(OWNER_MARK) for b in (st.blockers or []))
+
+
+def hand_over(db, st: Story, reason: str, providers=None) -> bool:
+    """Không tự xử lý được → giữ video cho chủ kênh xem (một lần): ghi lý do lên đầu danh sách chặn + nhắn Telegram."""
+    if needs_owner(st):
+        return False
+    st.blockers = [f"{OWNER_MARK} {reason}", *(st.blockers or [])]
+    db.add(ReviewEvent(story_id=st.id, action="autoheal_handover", actor="autoheal", via="system", note=reason[:500]))
+    audit(db, "autoheal", "story.handover", "story", st.id, reason=reason[:300])
+    db.commit()
+    base = get_settings().public_base_url.rstrip("/")
+    _tell_owner(db, st, f"🔎 Video cần bạn xem: {st.topic}\n{reason}\nMở: {base}/story/?id={st.id}", providers)
+    return True
+
+
+def _fix(db, st: Story, kind: str) -> str:
+    """Áp cách sửa theo loại lỗi trước khi chạy lại. Trả mô tả ngắn (ghi nhật ký)."""
+    from ..models import ScriptVersion
+    from .jobs import _override_script, transition
+
+    sv = db.get(ScriptVersion, st.current_script_version_id) if st.current_script_version_id else None
+    if kind == "script_qa" and sv is not None and not sv.qa_passed:
+        if _override_script(sv):
+            return "bỏ qua kiểm tra kịch bản (công tắc Bỏ qua mọi kiểm tra)"
+        st.current_script_version_id = None
+        return "viết kịch bản mới"
+    if kind == "too_short" and st.state == S.NEEDS_REVIEW.value:
+        st.current_script_version_id = None
+        st.script_approved_by = None  # kịch bản mới (MANUAL: chủ kênh duyệt lại bằng nút "Duyệt & dựng")
+        transition(db, st, S.SCRIPT_DRAFT, "autoheal", "Video dưới 10 phút → viết kịch bản mới dài hơn")
+        return "viết kịch bản mới dài hơn (video dưới 10 phút)"
+    if st.resume_state == S.SCRIPT_DRAFT.value and sv is not None and not sv.qa_passed:
+        st.current_script_version_id = None
+        return "viết kịch bản mới"
+    return "chạy lại"
+
+
 def heal(db, providers=None) -> list[dict]:
     s = get_settings()
     out = []
     t = now()
     today = t.astimezone(ZoneInfo(s.timezone)).date()
-    q = select(Story).where(Story.mode == "AUTOPILOT_PRIVATE", Story.state.in_(HEAL_STATES)).order_by(Story.updated_at)
+    q = select(Story).where(Story.state.in_(HEAL_STATES)).order_by(Story.updated_at)
     for st in list(db.scalars(q)):
+        if needs_owner(st):
+            continue  # đã giao cho chủ kênh; chủ kênh bấm Chạy lại thì app tự xử lý lại từ đầu
         upd = st.updated_at if st.updated_at.tzinfo else st.updated_at.replace(tzinfo=t.tzinfo)
         if t - upd < HEAL_COOLDOWN:
             continue
@@ -97,44 +167,31 @@ def heal(db, providers=None) -> list[dict]:
         if st.lease_owner and lease and lease > t:
             continue
         why = " ".join([*(st.blockers or []), st.last_error or ""])
-        if "BLOCKED_BY_CREDENTIALS" in why:
-            continue  # chủ kênh phải nhập key/kết nối lại — Ban Tăng trưởng đã liệt kê việc này
-        if "BLOCKED_BY_BUDGET" in why:
+        kind = diagnose(why)
+        if kind == "credentials":
+            if hand_over(db, st, "Thiếu hoặc sai key/kết nối dịch vụ — app không tự nhập key được. Mở trang video để xem "
+                                 "cần nhập gì ở Thiết lập, rồi bấm Chạy lại.", providers):
+                out.append({"story_id": st.id, "action": "handover", "kind": kind})
+            continue
+        if kind == "budget":
             if upd.astimezone(ZoneInfo(s.timezone)).date() == today:
                 continue  # đợi ngân sách ngày mới
             out.append({"story_id": st.id, "action": "resume_budget", **_resume(st.id, providers)})
             continue
-        if st.auto_heal_attempts < s.auto_heal_max_attempts:
-            st.auto_heal_attempts += 1
-            if st.resume_state == S.SCRIPT_DRAFT.value and st.current_script_version_id:
-                from ..models import ScriptVersion
-
-                sv = db.get(ScriptVersion, st.current_script_version_id)
-                if sv is not None and not sv.qa_passed:
-                    st.current_script_version_id = None  # kịch bản trượt QA → viết bản mới thay vì kẹt mãi
-            audit(db, "autoheal", "story.autoheal_retry", "story", st.id, attempt=st.auto_heal_attempts, reason=why[:300])
-            db.commit()
-            out.append({"story_id": st.id, "action": "retry", "attempt": st.auto_heal_attempts, **_resume(st.id, providers)})
+        if st.auto_heal_attempts >= s.auto_heal_max_attempts:
+            if hand_over(db, st, f"App đã tự xử lý {st.auto_heal_attempts} lần nhưng chưa được. Lỗi gần nhất: "
+                                 f"{redact(why.strip())[:300]}", providers):
+                out.append({"story_id": st.id, "action": "handover", "kind": kind})
             continue
-        if st.state == S.UPLOADED_PRIVATE.value:
-            continue  # đã có video riêng tư trên kênh: không bỏ, chỉ ngừng thử (Telegram hỏng) — Nhật ký lỗi đã ghi
-        abandon(db, st, why)
-        out.append({"story_id": st.id, "action": "abandoned"})
+        st.auto_heal_attempts += 1
+        fix = _fix(db, st, kind)
+        db.add(ReviewEvent(story_id=st.id, action="autoheal_retry", actor="autoheal", via="system",
+                           note=f"Lần {st.auto_heal_attempts}/{s.auto_heal_max_attempts}: {fix}. Lỗi: {why[:300]}"))
+        audit(db, "autoheal", "story.autoheal_retry", "story", st.id, attempt=st.auto_heal_attempts, fix=fix, reason=why[:300])
+        db.commit()
+        out.append({"story_id": st.id, "action": "retry", "attempt": st.auto_heal_attempts, "fix": fix,
+                    **_resume(st.id, providers)})
     return out
-
-
-def abandon(db, st: Story, why: str) -> None:
-    from .jobs import transition
-
-    reason = f"Tự động bỏ sau {st.auto_heal_attempts} lần chạy lại: {why.strip()[:400]}"
-    transition(db, st, S.REJECTED, "autoheal", reason)
-    st.last_error = reason
-    db.add(ReviewEvent(story_id=st.id, action="auto_abandoned", actor="autoheal", via="system", note=reason))
-    if st.news_item is not None and st.news_item.status == "shortlist":
-        st.news_item.status = "dismissed"
-    audit(db, "autoheal", "story.auto_abandoned", "story", st.id, reason=reason[:300])
-    db.commit()
-    log.info("Tự động bỏ story %s: %s", st.id, reason)
 
 
 # ------------------------------------------------------------------ 3. tự công khai
@@ -256,8 +313,8 @@ def tick(providers=None) -> dict:
     from ..db import SessionLocal
     from .jobs import autopilot_tick
 
-    if not full_auto():
-        return {"ran": False, "reason": "Tự động hoàn toàn đang tắt"}
+    if not full_auto() and not heal_on():
+        return {"ran": False, "reason": "Tự động hoàn toàn và Tự xử lý lỗi đều đang tắt"}
     res: dict = {"ran": True}
     with SessionLocal() as db:
         try:
@@ -265,6 +322,8 @@ def tick(providers=None) -> dict:
         except Exception:
             db.rollback()
             log.exception("Tự sửa lỗi gặp sự cố", extra={"evcs_source": "scheduler"})
+        if not full_auto():
+            return res  # chỉ tự xử lý lỗi; tự công khai / Autopilot thuộc Tự động hoàn toàn
         try:
             res["publish"] = publish_due(db, providers)
         except Exception:

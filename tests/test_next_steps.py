@@ -52,7 +52,8 @@ def test_dismiss_stopped_story_and_list_shows_steps(client):
         s.commit()
         sid, nid = st.id, n.id
     row = next(x for x in client.get("/api/stories").json() if x["id"] == sid)
-    assert row["next_steps"] and row["next_steps"][0]["action"] == "run"
+    assert row["attention"] == "healing" and row["next_steps"][0]["action"] == "info"  # app đang tự xử lý
+    assert [x for x in row["next_steps"] if x["action"] != "info"][0]["action"] == "run"
     r = client.post(f"/api/stories/{sid}/dismiss", json={"note": "không cần"})
     assert r.status_code == 200 and r.json()["state"] == "REJECTED"
     with SessionLocal() as s:

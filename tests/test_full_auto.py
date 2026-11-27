@@ -141,9 +141,11 @@ def _stuck_story(db, state="NEEDS_REVIEW", blockers=None, attempts=0, age_min=30
     return st.id
 
 
-def test_heal_retries_then_abandons_and_skips_budget_and_credentials(full_auto_on, monkeypatch):
-    calls = []
+def test_heal_retries_then_hands_over_never_abandons(full_auto_on, monkeypatch):
+    """Chủ kênh: "gặp lỗi các bạn tự xử lý, không thể xử lý hãy để tôi xem" → tự sửa; không được thì giữ cho chủ kênh, không bỏ."""
+    calls, told = [], []
     monkeypatch.setattr(autoops, "_resume", lambda sid, p: calls.append(sid) or {"state": "NEEDS_REVIEW"})
+    monkeypatch.setattr(autoops, "_tell_owner", lambda db, st, text, providers=None: told.append(st.id))
     with SessionLocal() as s:
         retry = _stuck_story(s, attempts=0)
         give_up = _stuck_story(s, attempts=1)
@@ -152,14 +154,49 @@ def test_heal_retries_then_abandons_and_skips_budget_and_credentials(full_auto_o
         fresh = _stuck_story(s, age_min=1)
         out = {o["story_id"]: o["action"] for o in autoops.heal(s)}
         assert out.get(retry) == "retry" and calls == [retry]
-        assert out.get(give_up) == "abandoned" and s.get(Story, give_up).state == "REJECTED"
-        assert "Tự động bỏ" in s.get(Story, give_up).last_error
-        assert budget not in out and creds not in out and fresh not in out
+        for sid in (give_up, creds):  # không tự xử lý được → giữ video, ghi "Cần bạn xem", nhắn Telegram 1 lần
+            st = s.get(Story, sid)
+            assert out.get(sid) == "handover" and st.state == "NEEDS_REVIEW" and st.blockers[0].startswith(autoops.OWNER_MARK)
+        assert sorted(told) == sorted([give_up, creds])
+        assert budget not in out and fresh not in out
+        again = {o["story_id"] for o in autoops.heal(s)}  # lần sau không nhắn lại, không chạy lại
+        assert give_up not in again and creds not in again and len(told) == 2
         from ev_studio.models import ReviewEvent
 
         ids = [retry, give_up, budget, creds, fresh]
         s.execute(delete(ReviewEvent).where(ReviewEvent.story_id.in_(ids)))
         s.execute(delete(Story).where(Story.id.in_(ids)))
+        s.commit()
+
+
+def test_diagnose_and_fix_by_error_kind():
+    assert autoops.diagnose("BLOCKED_BY_CREDENTIALS: Thiếu Pixabay API key") == "credentials"
+    assert autoops.diagnose("Media QA: Không dưới 10 phút — 512.0s") == "too_short"
+    assert autoops.diagnose("Script QA chưa đạt (v4)") == "script_qa"
+    assert autoops.diagnose("BLOCKED_BY_BUDGET (ngày)") == "budget"
+    assert autoops.diagnose("ReadTimeout khi gọi Claude") == "other"
+
+
+def test_heal_runs_for_manual_videos_without_full_auto(monkeypatch):
+    """Tự xử lý lỗi chạy cho cả video MANUAL và không cần bật Tự động hoàn toàn; video dưới 10 phút → viết kịch bản mới."""
+    from ev_studio.config import get_settings
+
+    assert get_settings().auto_heal and not get_settings().full_auto
+    calls = []
+    monkeypatch.setattr(autoops, "_resume", lambda sid, p: calls.append(sid) or {"state": "SCRIPT_DRAFT"})
+    with SessionLocal() as s:
+        sid = _stuck_story(s, blockers=["Media QA: Không dưới 10 phút — 540.0s"])
+        s.execute(Story.__table__.update().where(Story.id == sid).values(mode="MANUAL", resume_state="QA_PENDING",
+                                                                         updated_at=now() - timedelta(minutes=30)))
+        s.commit()
+        res = {o["story_id"]: o for o in autoops.heal(s)}
+        assert res[sid]["action"] == "retry" and "dài hơn" in res[sid]["fix"] and calls == [sid]
+        st = s.get(Story, sid)
+        assert st.state == "SCRIPT_DRAFT" and st.current_script_version_id is None
+        from ev_studio.models import ReviewEvent
+
+        s.execute(delete(ReviewEvent).where(ReviewEvent.story_id == sid))
+        s.execute(delete(Story).where(Story.id == sid))
         s.commit()
 
 

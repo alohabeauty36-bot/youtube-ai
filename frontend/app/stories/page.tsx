@@ -9,6 +9,7 @@ export default function Stories() {
   const { data, error, reload } = useLoad<any[]>("/api/stories", d => (d || []).some((s: any) => s.running) ? 3000 : null);
   const [busy, setBusy] = useState(false); const [err, setErr] = useState<any>(null);
   const stuck = (data || []).filter(s => STOP_STATES.includes(s.state));
+  const owner = stuck.filter(s => s.attention === "owner"); const healing = stuck.filter(s => s.attention === "healing");
   const waiting = (data || []).filter(s => !STOP_STATES.includes(s.state) && s.next_steps?.some((x: any) => x.action === "approve"));
   const runAll = async () => {
     setBusy(true); setErr(null);
@@ -20,9 +21,10 @@ export default function Stories() {
     <>
       <h2>Video đang làm</h2>
       <ErrorBox error={error || err} />
-      {stuck.length > 0 && <div className="hint row">
-        <span><b>{stuck.length} video đang chờ bạn xử lý.</b> Xem lý do ở cột “Lý do / việc cần làm”, xử lý theo gợi ý rồi bấm <b>Chạy lại</b>.
-          Bấm vào tên video để xem đầy đủ hướng dẫn.</span>
+      {healing.length > 0 && <div className="hint"><b>App đang tự xử lý {healing.length} video lỗi</b> (thử lại mỗi 10–20 phút). Bạn không cần làm gì.</div>}
+      {stuck.length > 0 && <div className={owner.length ? "error row" : "hint row"}>
+        <span>{owner.length > 0 ? <><b>{owner.length} video cần bạn xem</b> — app không tự xử lý được. Xem lý do ở cột “Lý do / việc cần làm”.</>
+          : <>Muốn xử lý ngay không chờ app?</>} Bấm vào tên video để xem đầy đủ.</span>
         <span className="right"><button className="primary" disabled={busy} onClick={runAll}>{busy ? "Đang gửi…" : `Chạy lại cả ${stuck.length} video`}</button></span>
       </div>}
       {waiting.length > 0 && <div className="hint"><b>{waiting.length} video có kịch bản đang chờ bạn duyệt.</b> Bấm <b>Duyệt &amp; dựng</b> ở cột bên phải.</div>}
