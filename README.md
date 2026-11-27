@@ -61,7 +61,7 @@ Giữ nguyên: cấu hình và key đã nhập, **sổ cái ngân sách** (tiề
 
 **Truy cập:** khi mở trên chính máy chạy ứng dụng (127.0.0.1), bạn không cần mật khẩu. Khi truy cập từ máy khác, ứng dụng yêu cầu mật khẩu chủ kênh hoặc biên tập viên. Nếu ứng dụng nằm sau reverse proxy, các request có header proxy **không** được tin là truy cập cục bộ.
 
-**Dành cho lập trình viên:** `make test` chạy 206 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8010.
+**Dành cho lập trình viên:** `make test` chạy 211 test. `make demo` chạy toàn tuyến DEMO 10 phút. Docker: `docker compose up -d --build` (Postgres + Redis + worker VieNeu), rồi mở http://localhost:8010.
 
 ### Windows 11
 Nên dùng WSL2 (Ubuntu) với Docker Desktop. Cách native cũng chạy được với Python 3.12, FFmpeg (gyan.dev, có libass) và `pip install vieneu` (CPU/ONNX). GPU CUDA trên Windows cần cài `torch==2.8.0` cu128 trước, theo README của VieNeu.
@@ -73,6 +73,12 @@ Nên dùng WSL2 (Ubuntu) với Docker Desktop. Cách native cũng chạy đượ
 ## 3c. Tự động hoàn toàn
 Một công tắc trên **Bảng điều khiển** (hoặc Thiết lập → Tự động hoàn toàn). Khi bật, mỗi 10 phút app tự làm:
 - **Quét tin và Autopilot**: lịch quét và Autopilot được coi là đang bật. Thiếu tin ≥ 80 điểm thì lấy tin trong shortlist (≥ 75 điểm), vẫn bắt buộc có dữ kiện trọng yếu có nguồn. Số video/ngày theo Ban Tăng trưởng, luôn trong trần ngân sách AI.
+
+### Bỏ qua mọi kiểm tra (mặc định bật từ 27/11/2026)
+
+Thiết lập → tab **Biên tập & thời lượng** → **Bỏ qua mọi kiểm tra (Script QA + Media QA)**. Khi bật, lỗi kiểm tra kịch bản (tiêu đề, độ dài, chép nguồn, trùng video cũ, câu hỏi chưa giải quyết…) và kiểm tra video (fps, thumbnail, đen hình, âm lượng…) chỉ ghi lại làm **cảnh báo**, video chạy tiếp. Chỉ dẫn dựng, markdown, đường link trong lời đọc được **tự xoá** thay vì chặn. Vẫn **không bỏ được**: video dưới 10 phút, hình chưa có giấy phép, file đổi sau khi kiểm tra, kịch bản rỗng.
+
+Mỗi kịch bản trượt kiểm tra còn có nút **"Bỏ qua kiểm tra & duyệt"** (trang Biên tập và trang Video đang làm), dùng được cả khi công tắc tắt; mọi lần bỏ qua được ghi nhật ký. Video ở chế độ MANUAL có kịch bản chờ duyệt hiện nút **"Duyệt & dựng"** ngay ở trang Video đang làm.
 
 ### Xử lý tin chưa xác minh: off (mặc định) · analysis · strict
 
@@ -183,7 +189,7 @@ prompts/pillars/P1|P2|P3.md       hồ sơ trụ cột
 prompts/reference/…               Mục IV nguyên văn (tham khảo văn phong)
 frontend/                         Next.js 15 + TypeScript (xuất tĩnh → backend/ev_studio/web_dist, backend phục vụ)
 migrations/                       Alembic
-tests/                            206 test
+tests/                            211 test
 run.py, start.bat, start.sh       chạy bằng một lệnh
 backend/ev_studio/runtime_config.py  cấu hình API lưu mã hoá trong DB
 backend/ev_studio/agents/            Ban Tài chính (budget, pricing) + bộ não phòng ban (brain, memory, teachers, learning, writer) + Ban Tăng trưởng (growth)

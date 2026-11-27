@@ -148,6 +148,9 @@ FIELDS: list[ConfigField] = [
                 help="Pexels đã tạm dừng cấp key mới (từ cuối 9/2026). Có key cũ thì nhập để thêm nguồn; không có thì bỏ trống."),
     ConfigField("wikimedia_enabled", "Tìm ảnh trên Wikimedia Commons", "media", "bool"),
     ConfigField("wikimedia_user_agent", "User-Agent gửi Wikimedia (kèm email liên hệ)", "media", "text"),
+    ConfigField("skip_quality_gates", "Bỏ qua mọi kiểm tra (Script QA + Media QA)", "editorial", "bool",
+                help="Bật (mặc định): lỗi kiểm tra kịch bản/video chỉ là cảnh báo, video chạy tiếp, không còn \"Cần người xử lý\" vì QA. "
+                     "Vẫn không bỏ được: video dưới 10 phút, hình chưa có giấy phép, kịch bản rỗng."),
     ConfigField("fact_mode", "Cách xử lý tin chưa xác minh", "editorial", "select", ("off", "analysis", "strict"),
                 help="off (mặc định): bỏ qua mọi luật xác minh — không bước nào dừng video vì tin chưa xác minh; kịch bản vẫn được "
                      "dặn ghi nguồn và không thêm thông tin ngoài bài báo (chỉ cảnh báo, không chặn). analysis: video là bài PHÂN TÍCH tin báo chí đã đăng — tin mới có một báo đưa vẫn làm được, "

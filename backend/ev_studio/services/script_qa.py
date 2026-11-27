@@ -12,6 +12,15 @@ TIMESTAMP = re.compile(r"\b\d{1,2}:\d{2}\b")
 URL = re.compile(r"https?://|www\.", re.I)
 
 
+def clean_for_tts(text: str) -> str:
+    """Xoá chỉ dẫn dựng ([CẢNH…], (nhạc…)), markdown, gạch đầu dòng, URL; đổi 8:30 → 8 giờ 30 — để giọng đọc không đọc to chúng."""
+    t = STAGE_DIRECTION.sub("", text)
+    t = re.sub(r"https?://\S+|www\.\S+", "", t)
+    t = TIMESTAMP.sub(lambda m: m.group(0).replace(":", " giờ "), t)
+    t = re.sub(r"[ \t]{2,}", " ", t)
+    return "\n".join(line.strip() for line in t.splitlines()).strip()
+
+
 @dataclass
 class QAResult:
     passed: bool

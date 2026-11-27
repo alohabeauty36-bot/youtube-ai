@@ -1,6 +1,6 @@
 """Gợi ý "việc cần làm" bằng lời thường cho video đang dừng (Cần người xử lý / Lỗi), kèm nút bấm được trên giao diện.
 
-Mỗi gợi ý: {"text": lời hướng dẫn, "action": "run" | "settings" | "editor" | "dismiss", "tab": tab Thiết lập (khi action=settings),
+Mỗi gợi ý: {"text": lời hướng dẫn, "action": "run" | "approve" | "settings" | "editor" | "dismiss", "tab": tab Thiết lập (khi action=settings),
 "label": chữ trên nút}. Chỉ đọc lý do chặn đã ghi — không gọi mạng, không đổi dữ liệu.
 """
 from __future__ import annotations
@@ -24,7 +24,12 @@ def _has(text: str, words) -> bool:
     return any(w in text for w in words)
 
 
-def next_steps(state: str, blockers: list[str] | None, last_error: str | None) -> list[dict]:
+def next_steps(state: str, blockers: list[str] | None, last_error: str | None, awaiting_script_approval: bool = False) -> list[dict]:
+    if awaiting_script_approval and state == "SCRIPT_DRAFT":
+        return [{"text": "Kịch bản đã viết xong, đang chờ bạn duyệt. Bấm \"Duyệt & dựng\" để làm video (bỏ qua kiểm tra nếu còn lỗi), "
+                         "hoặc mở trang Biên tập để đọc trước.", "action": "approve", "label": "Duyệt & dựng"},
+                {"text": "Muốn đọc/sửa kịch bản trước?", "action": "editor", "label": "Mở trang Biên tập"},
+                {"text": "Không muốn làm video này nữa?", "action": "dismiss", "label": "Bỏ video"}]
     if state not in STOP_STATES:
         return []
     raw = " | ".join([*(blockers or []), last_error or ""])
@@ -52,8 +57,9 @@ def next_steps(state: str, blockers: list[str] | None, last_error: str | None) -
     if _has(t, ("chua xac minh", "tranh cai", "can xac minh", "claim trong yeu", "freshness")):
         add("Video dừng theo quy tắc xác minh tin cũ. App đã bỏ qua mọi luật xác minh — bấm \"Chạy lại\".", "run", "Chạy lại")
     if _has(t, ("script qa", "kich ban", "ghi ro nguon", "claim map", "so tu", "chep dai", "trung video")):
-        add("Kịch bản chưa qua bước kiểm tra. Bấm \"Chạy lại\" để Biên kịch viết lại, hoặc mở trang Biên tập để sửa tay.",
-            "editor", "Mở trang Biên tập")
+        add("Kịch bản chưa qua bước kiểm tra. Bấm \"Bỏ qua kiểm tra & duyệt\" để dùng luôn kịch bản này và dựng video, "
+            "hoặc \"Chạy lại\" để viết bản mới.", "approve", "Bỏ qua kiểm tra & duyệt")
+        add("Muốn đọc/sửa kịch bản trước?", "editor", "Mở trang Biên tập")
     if _has(t, ("thoi luong", "duoi 10 phut", "qua dai", "audio")):
         add("Thời lượng chưa đạt (phải từ 10 phút). Bấm \"Chạy lại\" để viết lại cho đủ độ dài.", "run", "Chạy lại")
     if _has(t, ("license", "tu lieu", "asset")):

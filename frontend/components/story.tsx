@@ -26,11 +26,12 @@ export function NextSteps({ s, reload, compact = false }: { s: any; reload: () =
     if (st.action === "dismiss" && !confirm(`Bỏ video "${s.topic}"? Tin này sẽ không được chọn lại.`)) return;
     setBusy(st.action);
     try {
-      await api(`/api/stories/${s.id}/${st.action === "dismiss" ? "dismiss" : "run"}`, { method: "POST" });
+      if (st.action === "approve") await api(`/api/scripts/${s.current_script_version_id}/approve?force=true`, { method: "POST" });
+      else await api(`/api/stories/${s.id}/${st.action === "dismiss" ? "dismiss" : "run"}`, { method: "POST" });
       setTimeout(reload, 600);
     } catch (e) { setErr(e); } finally { setBusy(""); }
   };
-  const btn = (st: any, i: number) => <button key={i} className={st.action === "run" ? "primary small" : st.action === "dismiss" ? "danger small" : "small"}
+  const btn = (st: any, i: number) => <button key={i} className={st.action === "run" || st.action === "approve" ? "primary small" : st.action === "dismiss" ? "danger small" : "small"}
     disabled={!!busy || s.running} onClick={() => act(st)}>{busy === st.action ? "Đang gửi…" : st.label}</button>;
   if (compact) {
     const uniq = steps.filter((st, i) => steps.findIndex(x => x.action === st.action && x.tab === st.tab) === i);
@@ -65,7 +66,7 @@ export function StoryHeader({ s, active, reload }: { s: any; active: "editor" | 
         <span className="right"><button onClick={async () => { setErr(null); try { await api(`/api/stories/${s.id}/hold`, { method: "POST", json: { hold: !s.publish_hold } }); reload(); } catch (e) { setErr(e); } }}>
           {s.publish_hold ? "Cho phép tự công khai lại" : "⛔ Dừng tự công khai"}</button></span></div>}
       {s.auto_heal_attempts > 0 && <p className="small muted">Đã tự chạy lại {s.auto_heal_attempts} lần.</p>}
-      {STOP_STATES.includes(s.state) && <NextSteps s={s} reload={reload} />}
+      {s.next_steps?.length > 0 && <NextSteps s={s} reload={reload} />}
       {s.blockers?.length > 0 && <div className="error"><b>Đang bị chặn:</b><ul>{s.blockers.map((b: string, i: number) => <li key={i}>{b}</li>)}</ul>
         {s.blockers.some((b: string) => b.includes("BLOCKED_BY_CREDENTIALS")) && <a href="/settings/">→ Mở Thiết lập để nhập/kiểm tra key API, rồi bấm “Chạy tiếp / thử lại”.</a>}</div>}
       {s.last_error && !s.blockers?.length && s.state.startsWith("FAILED") && <div className="error small">{s.last_error}</div>}

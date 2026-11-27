@@ -115,6 +115,9 @@ class Settings(BaseSettings):
     # analysis: bài phân tích tin đã đăng (tin mới có 1 báo đưa vẫn làm được, phải ghi "theo <báo>"); strict: chỉ claim đã xác minh
     # off (mặc định): không luật xác minh nào chặn video
     fact_mode: Literal["off", "analysis", "strict"] = "off"
+    # Bỏ qua mọi kiểm tra chất lượng (Script QA, Media QA): lỗi chỉ ghi lại làm cảnh báo, video chạy tiếp.
+    # Không bỏ được: video dưới 10 phút, hình chưa có giấy phép, file đổi sau QA, kịch bản rỗng (xem quality_gates.py).
+    skip_quality_gates: bool = True
     pixabay_api_key: SecretStr | None = None  # nguồn video/ảnh chính (key miễn phí, cấp ngay)
     pexels_api_key: SecretStr | None = None  # chỉ dùng key cũ: Pexels dừng cấp key mới từ ~30/9/2026
     wikimedia_enabled: bool = True

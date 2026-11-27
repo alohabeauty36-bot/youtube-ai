@@ -234,12 +234,35 @@ def script_job(session: Session, story: Story, p: Providers, actual_audio_second
         raise
 
 
+def _override_script(sv: ScriptVersion, by: str = "cài đặt: Bỏ qua mọi kiểm tra", force: bool = False) -> bool:
+    """Cho qua một kịch bản trượt Script QA (công tắc Bỏ qua mọi kiểm tra, hoặc chủ kênh bấm nút). False nếu còn lỗi không bỏ được."""
+    from ..services import quality_gates as qg
+
+    if sv.qa_passed or not (force or qg.skip_on()) or not (sv.spoken_script or "").strip():
+        return False
+    ov = qg.override(sv.qa or {}, "script", by)
+    if ov is None:
+        return False
+    sv.qa, sv.qa_passed = ov, True
+    return True
+
+
 def _publishers(news) -> list[str]:
     return [x for x in dict.fromkeys([news.publisher or ""] + [s.get("publisher") or "" for s in (news.supporting_sources or [])]) if x]
 
 
 def save_script_version(session: Session, story: Story, out: dict, *, created_by: str, model: str | None, is_demo: bool,
                         change_note: str) -> dict:
+    from ..services import quality_gates as qg
+    from ..services.script_qa import clean_for_tts
+
+    if qg.skip_on() and out.get("spoken_script"):  # "Bỏ qua mọi kiểm tra": tự làm sạch lời đọc thay vì chặn
+        cleaned = clean_for_tts(out["spoken_script"])
+        if cleaned != out["spoken_script"]:
+            out = {**out, "spoken_script": cleaned}
+            teaser = (out.get("closing_teaser") or "").strip()
+            if teaser and not cleaned.rstrip().endswith(clean_for_tts(teaser).rstrip()):
+                out["closing_teaser"] = cleaned.split("\n")[-1].strip()
     rp = latest_pack(session, story)
     news = story.news_item
     pack_claims = rp.content["claims"] + rp.content.get("claims_to_avoid", [])
@@ -250,17 +273,25 @@ def save_script_version(session: Session, story: Story, out: dict, *, created_by
     qa = run_script_qa(out, pack_claims=pack_claims, source_texts=source_texts, recent_scripts=recent_scripts,
                        supported_phrases_text=supported, is_demo=is_demo, publishers=_publishers(news))
     version = (session.scalar(select(func.max(ScriptVersion.version)).where(ScriptVersion.story_id == story.id)) or 0) + 1
+    from ..services import quality_gates as qg
+
+    qa_doc, qa_ok = qa.as_dict(), qa.passed
+    if not qa_ok and qg.skip_on():  # "Bỏ qua mọi kiểm tra": lỗi Script QA thành cảnh báo
+        ov = qg.override(qa_doc, "script", "cài đặt: Bỏ qua mọi kiểm tra")
+        if ov is not None:
+            qa_doc, qa_ok = ov, True
     sv = ScriptVersion(story_id=story.id, version=version, parent_version_id=story.current_script_version_id, content=out,
-                       spoken_script=out["spoken_script"], word_count=len(out["spoken_script"].split()), qa=qa.as_dict(),
-                       qa_passed=qa.passed, created_by=created_by, change_note=change_note, prompt_hash=load_prompts().sha256,
+                       spoken_script=out["spoken_script"], word_count=len(out["spoken_script"].split()), qa=qa_doc,
+                       qa_passed=qa_ok, created_by=created_by, change_note=change_note, prompt_hash=load_prompts().sha256,
                        model=model, is_demo=is_demo)
     session.add(sv)
     session.flush()
     story.current_script_version_id = sv.id
     session.commit()  # giữ bản lỗi QA để biên tập viên xem/sửa
-    if not qa.passed:
+    if not qa_ok:
         raise GateBlocked([f"Script QA: {c['name']} — {c['detail']}" for c in qa.checks if c["blocking"] and not c["ok"]])
-    return {"script_version_id": sv.id, "version": version, "words": sv.word_count}
+    return {"script_version_id": sv.id, "version": version, "words": sv.word_count,
+            **({"qa_warnings": len(qa_doc.get("warnings", []))} if qa_doc.get("overridden_by") else {})}
 
 
 # ------------------------------------------------------------------ 5. TTS
@@ -726,10 +757,14 @@ def qa_job(session: Session, story: Story, p: Providers) -> dict:
                                 thumbnail=Path(r.thumbnail_paths[0]) if r.thumbnail_paths else None,
                                 subtitle=Path(r.subtitle_srt_path) if r.subtitle_srt_path else None,
                                 hard_min_seconds=0 if s.allow_short_duration_for_tests else MIN_VIDEO_SECONDS)
-    r.qa, r.qa_passed, r.duration, r.width, r.height = res, res["passed"], res["duration"], res["width"], res["height"]
     if res["sha256"] != r.sha256:
-        r.qa_passed = False
+        res["passed"] = False
         res["checks"].append({"name": "Checksum khớp file render", "ok": False, "detail": "file đã thay đổi"})
+    from ..services import quality_gates as qg
+
+    if not res["passed"] and qg.skip_on():  # "Bỏ qua mọi kiểm tra": lỗi Media QA thành cảnh báo (trừ mục không bỏ được)
+        res = qg.override(res, "media", "cài đặt: Bỏ qua mọi kiểm tra") or res
+    r.qa, r.qa_passed, r.duration, r.width, r.height = res, res["passed"], res["duration"], res["width"], res["height"]
     session.commit()
     if not r.qa_passed:
         raise GateBlocked([f"Media QA: {c['name']} — {c['detail']}" for c in res["checks"] if not c["ok"]])
@@ -994,6 +1029,8 @@ def run_pipeline(story_id: str, providers: Providers | None = None, actor: str =
                         _step(session, story, "ScriptJob", input_hash(story.id, latest_pack(session, story).id, 0), script_job, p)
                         session.commit()
                         sv = current_script(session, story)
+                if not sv.qa_passed and _override_script(sv):
+                    session.commit()  # bản trượt QA từ trước khi bật "Bỏ qua mọi kiểm tra" → dùng luôn, không viết lại
                 if not sv.qa_passed:
                     raise GateBlocked([f"Script QA chưa đạt (v{sv.version})"])
                 if not (auto or story.script_approved_by):

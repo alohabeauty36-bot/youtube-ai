@@ -60,10 +60,16 @@ def test_manual_flow_stops_for_human_and_upload_needs_confirmation(client):
     assert r.status_code == 400
     r = client.post(f"/api/stories/{st['id']}/upload-private", json={"confirm_private": True})
     assert r.status_code == 200  # chỉ ghi nhận yêu cầu; gate kiểm tra ở pipeline (chưa READY)
-    edit = client.patch(f"/api/scripts/{d['script']['id']}", json={"spoken_script": "[CẢNH 1] lời đọc bẩn"})
-    assert edit.status_code == 200 and edit.json()["qa_passed"] is False
-    sv_id = edit.json()["script_version_id"]
-    assert client.post(f"/api/scripts/{sv_id}/approve").status_code == 409  # QA chưa đạt → không được duyệt
+    from ev_studio.config import get_settings
+
+    get_settings().skip_quality_gates = False  # luồng duyệt tay với Script QA đầy đủ (mặc định app bỏ qua kiểm tra)
+    try:
+        edit = client.patch(f"/api/scripts/{d['script']['id']}", json={"spoken_script": "[CẢNH 1] lời đọc bẩn"})
+        assert edit.status_code == 200 and edit.json()["qa_passed"] is False
+        sv_id = edit.json()["script_version_id"]
+        assert client.post(f"/api/scripts/{sv_id}/approve").status_code == 409  # QA chưa đạt → không được duyệt
+    finally:
+        get_settings().skip_quality_gates = True
     with SessionLocal() as s:
         versions = s.scalars(select(ScriptVersion).where(ScriptVersion.story_id == st["id"])).all()
         assert len(versions) == 2  # version cũ immutable

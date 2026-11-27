@@ -130,7 +130,12 @@ class AgentWriter:
         def check(out):
             pubs = [x.get("publisher") or "" for x in pack.get("sources", [])] + [(pack.get("news") or {}).get("publisher") or ""]
             qa = run_script_qa(out, pack_claims=pack_claims, source_texts=[], recent_scripts=[], publishers=pubs)
-            problems = [f"{c['name']}: {c['detail']}" for c in qa.checks if c["blocking"] and not c["ok"]]
+            from ..services import quality_gates as qg
+
+            failed = [c for c in qa.checks if c["blocking"] and not c["ok"]]
+            if qg.skip_on():  # "Bỏ qua mọi kiểm tra": chỉ đòi viết lại khi lỗi không bỏ được (kịch bản rỗng) hoặc sai độ dài
+                failed = qg.hard_failures(failed, "script")
+            problems = [f"{c['name']}: {c['detail']}" for c in failed]
             words = len(out.get("spoken_script", "").split())
             if not 0.8 * target_words <= words <= 1.2 * target_words:
                 problems.append(f"độ dài {words} từ, cần khoảng {int(target_words)}")

@@ -57,7 +57,9 @@ function Editor() {
             <Badge kind={sc.qa_passed ? "ok" : "bad"}>QA {sc.qa_passed ? "đạt" : "chưa đạt"}</Badge>
             {s.script_approved_by ? <Badge kind="ok">đã duyệt: {s.script_approved_by}</Badge> :
               !["SCRIPT_DRAFT", "NEEDS_REVIEW"].includes(s.state) ? <Badge kind="ok">{s.mode === "AUTOPILOT_PRIVATE" ? "Autopilot: gate tự động đạt" : "đã qua bước kịch bản"}</Badge> :
-              <button className="primary" disabled={!sc.qa_passed || !!busy} onClick={() => call("ap", () => api(`/api/scripts/${sc.id}/approve`, { method: "POST" }))}>Duyệt kịch bản & dựng</button>}
+              sc.qa_passed ? <button className="primary" disabled={!!busy} onClick={() => call("ap", () => api(`/api/scripts/${sc.id}/approve`, { method: "POST" }))}>Duyệt kịch bản & dựng</button>
+                : <button className="primary" disabled={!!busy} title="Dùng luôn kịch bản này dù kiểm tra chưa đạt (ghi nhật ký)"
+                  onClick={() => call("ap", () => api(`/api/scripts/${sc.id}/approve?force=true`, { method: "POST" }))}>Bỏ qua kiểm tra & duyệt</button>}
           </div>}>
             {!sc && <div className="row"><p className="muted">Chưa có kịch bản.</p><button onClick={() => call("gen", () => api(`/api/stories/${s.id}/generate-script`, { method: "POST" }))}>Sinh kịch bản</button></div>}
             {content && <>
