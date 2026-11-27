@@ -137,20 +137,26 @@ class AnthropicWriter:
 
     def research_pack(self, ctx):
         user = json.dumps({k: ctx[k] for k in ("news", "sources", "claims", "recent_topics", "pillar")}, ensure_ascii=False)
-        raw, usage = self.llm.complete_json(self.bundle.research_system, user, 6000)
+        from .fact_checker import prompt_note
+
+        raw, usage = self.llm.complete_json(self.bundle.research_system + prompt_note("research"), user, 6000)
         try:
             return ResearchPackLLM.model_validate(raw).model_dump(), usage
         except ValidationError as e:
             raise RetryableError(f"ResearchPack sai schema: {e.errors()[:2]}") from e
 
     def write_script(self, ctx):
-        system = self.bundle.system + "\n\n" + self.bundle.pillar_profiles[ctx["pillar"]]
+        from .fact_checker import prompt_note
+
+        system = self.bundle.system + prompt_note("script") + "\n\n" + self.bundle.pillar_profiles[ctx["pillar"]]
         user = render_developer_message(self.bundle, ctx) + "\n\n" + render_user_task(self.bundle, ctx["core_question"])
         raw, usage = self.llm.complete_json(system, user)
         return _validate_script(raw), usage
 
     def rewrite_paragraph(self, ctx, paragraph, instruction):
-        system = (self.bundle.system + "\n\nNHIỆM VỤ PHỤ: viết lại MỘT đoạn lời đọc. Trả JSON {\"paragraph\": \"...\"}. "
+        from .fact_checker import prompt_note
+
+        system = (self.bundle.system + prompt_note("script") + "\n\nNHIỆM VỤ PHỤ: viết lại MỘT đoạn lời đọc. Trả JSON {\"paragraph\": \"...\"}. "
                   "Giữ nguyên mọi dữ kiện có claim, không thêm dữ kiện mới ngoài RESEARCH_PACK.")
         user = render_developer_message(self.bundle, ctx) + f"\n\nĐOẠN CẦN SỬA:\n{paragraph}\n\nYÊU CẦU SỬA: {instruction}"
         raw, usage = self.llm.complete_json(system, user, 2000)
@@ -187,7 +193,9 @@ class DemoWriter:
         return [], {"input_tokens": 0, "output_tokens": 0, "model": self.model}
 
     def research_pack(self, ctx):
-        claims = [c for c in ctx["claims"] if c["status"] == "verified"]
+        from .fact_checker import is_fact
+
+        claims = [c for c in ctx["claims"] if is_fact(c["status"])]
         topic = ctx["news"]["title"].replace("[DEMO] ", "")
         pack = {
             "editorial_angle": f"Điều kiện nào quyết định giá trị thật của: {topic}?",
@@ -210,7 +218,9 @@ class DemoWriter:
     def write_script(self, ctx):
         pack = ctx["research_pack"]
         pillar = ctx["pillar"]
-        verified = [c for c in pack["claims"] if c["status"] == "verified"]
+        from .fact_checker import is_fact
+
+        verified = [c for c in pack["claims"] if is_fact(c["status"])]  # câu dữ kiện DEMO luôn mở đầu "Theo <báo>"
         inferences = [c for c in pack["claims"] if c["status"] == "inference"]
         src = {s["source_id"]: s for s in pack["sources"]}
         topic = pack.get("topic", "chủ đề hôm nay")

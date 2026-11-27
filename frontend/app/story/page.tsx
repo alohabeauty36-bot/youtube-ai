@@ -26,7 +26,7 @@ function Editor() {
         <div>
           <Card title="Nguồn & claims" right={<span className="small muted">Bấm claim để mở nguồn</span>}>
             {(s.news?.claims || []).map((c: any) => <div key={c.id} className={`claim ${c.status}`}>
-              <div className="row"><b>{c.claim_key}</b><Badge kind={c.status === "verified" ? "ok" : c.status === "inference" ? "warn" : "bad"}>{c.status === "contested" ? "[CẦN XÁC MINH]" : c.status}</Badge>
+              <div className="row"><b>{c.claim_key}</b><Badge kind={c.status === "verified" ? "ok" : c.status === "inference" || c.status === "reported" ? "warn" : "bad"}>{c.status === "contested" ? "[CẦN XÁC MINH]" : c.status === "reported" ? "đã đưa tin (ghi nguồn)" : c.status}</Badge>
                 <a href={c.source_url || "#"} target="_blank" rel="noreferrer">{c.text}</a></div>
               <div className="small muted">{c.date_scope} {c.verification_reason}</div></div>)}
           </Card>

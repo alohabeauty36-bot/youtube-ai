@@ -127,16 +127,27 @@ def fact_check_job(session: Session, story: Story, p: Providers) -> dict:
         if c.editor_note and c.status == "verified" and c.verification_reason and c.verification_reason.startswith("Biên tập viên"):
             continue  # đã được biên tập viên xác minh thủ công với nguồn
         c.status, c.verification_reason = r["status"], r["verification_reason"]
-    blockers = fc.blocking_claims(claims)
-    if not any(c.status == "verified" and c.is_key for c in claims):
-        blockers.append("Không có claim trọng yếu nào đã xác minh")
+    analysis = fc.analysis_mode()
+    blockers = fc.blocking_claims(claims, analysis)
+    if not any(fc.is_fact(c.status) and c.is_key for c in claims):
+        blockers.append("Không có claim trọng yếu nào có nguồn để phân tích" if analysis
+                        else "Không có claim trọng yếu nào đã xác minh")
     if blockers:
         raise GateBlocked(blockers)
     probs = fc.freshness_check(claims, is_demo=story.is_demo)
+    if probs and analysis:
+        # Chế độ phân tích: nguồn đổi/không mở được không làm dừng video — claim liên quan chuyển thành "đã đưa tin"
+        # (kịch bản ghi "theo <báo>" như mọi tin chưa xác minh)
+        bad = {c.claim_key for c in claims for pr in probs if c.claim_key in pr}
+        for c in claims:
+            if c.claim_key in bad and c.status == "verified":
+                c.status, c.verification_reason = "reported", "Nguồn đã thay đổi/không kiểm tra lại được — chỉ nói \"theo bài đã đăng\""
+        probs = []
     if probs:
         raise GateBlocked(probs)
     story.freshness_checked_at = now()
-    return {"verified": sum(c.status == "verified" for c in claims), "claims": len(claims)}
+    return {"verified": sum(c.status == "verified" for c in claims), "reported": sum(c.status == "reported" for c in claims),
+            "claims": len(claims), "mode": "analysis" if analysis else "strict"}
 
 
 # ------------------------------------------------------------------ 3. research
@@ -144,7 +155,7 @@ def fact_check_job(session: Session, story: Story, p: Providers) -> dict:
 def research_job(session: Session, story: Story, p: Providers) -> dict:
     news = story.news_item
     claims = story_claims(session, story)
-    usable = [d for d in claim_dicts(claims) if d["status"] in ("verified", "inference")]
+    usable = [d for d in claim_dicts(claims) if fc.is_fact(d["status"]) or d["status"] == "inference"]
     avoid = [d for d in claim_dicts(claims) if d["status"] in ("unverified", "contested")]
     sources = story_sources(news)
     recent = [t for (t,) in session.execute(select(Story.topic).where(Story.id != story.id).order_by(Story.created_at.desc()).limit(10))]
@@ -216,17 +227,21 @@ def script_job(session: Session, story: Story, p: Providers, actual_audio_second
         raise
 
 
+def _publishers(news) -> list[str]:
+    return [x for x in dict.fromkeys([news.publisher or ""] + [s.get("publisher") or "" for s in (news.supporting_sources or [])]) if x]
+
+
 def save_script_version(session: Session, story: Story, out: dict, *, created_by: str, model: str | None, is_demo: bool,
                         change_note: str) -> dict:
     rp = latest_pack(session, story)
     news = story.news_item
     pack_claims = rp.content["claims"] + rp.content.get("claims_to_avoid", [])
     source_texts = [news.raw_excerpt] + [x.get("text") or "" for x in (news.supporting_sources or [])]
-    supported = " ".join(c["text"] for c in rp.content["claims"] if c["status"] == "verified") + " " + news.raw_excerpt
+    supported = " ".join(c["text"] for c in rp.content["claims"] if fc.is_fact(c["status"])) + " " + news.raw_excerpt
     recent_scripts = [t for (t,) in session.execute(
         select(ScriptVersion.spoken_script).where(ScriptVersion.story_id != story.id).order_by(ScriptVersion.created_at.desc()).limit(10))]
     qa = run_script_qa(out, pack_claims=pack_claims, source_texts=source_texts, recent_scripts=recent_scripts,
-                       supported_phrases_text=supported, is_demo=is_demo)
+                       supported_phrases_text=supported, is_demo=is_demo, publishers=_publishers(news))
     version = (session.scalar(select(func.max(ScriptVersion.version)).where(ScriptVersion.story_id == story.id)) or 0) + 1
     sv = ScriptVersion(story_id=story.id, version=version, parent_version_id=story.current_script_version_id, content=out,
                        spoken_script=out["spoken_script"], word_count=len(out["spoken_script"].split()), qa=qa.as_dict(),
@@ -302,7 +317,7 @@ def media_job(session: Session, story: Story, p: Providers) -> dict:
     sv, segs, total = _scene_inputs(session, story)
     scenes = storyboard.group_segments(segs, total)
     verified = [{"claim_key": c.claim_key, "text": c.text, "value": c.value, "unit": c.unit}
-                for c in story_claims(session, story) if c.status == "verified"]
+                for c in story_claims(session, story) if fc.is_fact(c.status)]
     brain = None
     if not story.is_demo:
         try:
@@ -413,7 +428,7 @@ def storyboard_job(session: Session, story: Story, p: Providers) -> dict:
 
     sv, segs, total = _scene_inputs(session, story)
     news = story.news_item
-    claims = {c.claim_key: c for c in story_claims(session, story) if c.status == "verified"}
+    claims = {c.claim_key: c for c in story_claims(session, story) if fc.is_fact(c.status)}
     claim_info = {k: {"text": c.text, "value": c.value, "unit": c.unit} for k, c in claims.items()}
     title = sv.content["title_options"][sv.content["selected_title_index"]]["title"]
     scenes = storyboard.group_segments(segs, total)
@@ -668,7 +683,8 @@ def seo_job(session: Session, story: Story, p: Providers) -> dict:
     desc = seo.build_description(main_angle=content["main_angle"], summary_line=content["title_options"][0]["title"],
                                  chapters=chapters, sources=sources, asset_credits=credits,
                                  has_estimates="phép tính ví dụ" in sv.spoken_script or "ví dụ" in sv.spoken_script,
-                                 pillar=story.pillar, is_demo=story.is_demo)
+                                 pillar=story.pillar, is_demo=story.is_demo,
+                                 analysis=any(c.status == "reported" for c in story_claims(session, story)))
     tags = seo.build_tags(story.pillar, news.model_names or [], news.entities or [], idem_tag)
     v = SEOVariant(story_id=story.id, render_id=r.id, title_options=content["title_options"],
                    selected_index=content["selected_title_index"], description=desc, tags=tags,
@@ -689,7 +705,7 @@ def qa_job(session: Session, story: Story, p: Providers) -> dict:
     used_ids = {a for sc in scenes for a in sc.asset_ids}
     assets = [{"id": a.id, "review_status": a.review_status if a.license and a.license.license_name else "missing_license"}
               for a in session.scalars(select(Asset).where(Asset.id.in_(used_ids)))] if used_ids else []
-    verified = {c.claim_key for c in story_claims(session, story) if c.status == "verified"}
+    verified = {c.claim_key for c in story_claims(session, story) if fc.is_fact(c.status)}
     facts_ok = all(cid in verified for sc in scenes for cid in sc.claim_ids) and all(
         f["claim_id"] in verified for f in sv.content.get("production_notes", {}).get("key_on_screen_facts", []))
     import json as _json
@@ -728,6 +744,14 @@ def upload_gate(session: Session, story: Story) -> list[str]:
         reasons.append("File render không khớp checksum đã QA")
     claims = story_claims(session, story)
     reasons += fc.blocking_claims(claims)
+    if fc.analysis_mode() and r:
+        # chế độ phân tích không chặn vì tin chưa xác minh, nhưng claim mà KỊCH BẢN ĐÃ DÙNG phải còn nguồn (không bịa)
+        sv_r = session.get(ScriptVersion, r.script_version_id)
+        used = {e["claim_id"] for e in (sv_r.content.get("editorial_claim_map") or [])} if sv_r else set()
+        used |= {f["claim_id"] for f in ((sv_r.content.get("production_notes") or {}).get("key_on_screen_facts") or [])} if sv_r else set()
+        for c in claims:
+            if c.claim_key in used and not (fc.is_fact(c.status) or c.status == "inference"):
+                reasons.append(f"Kịch bản dùng claim {c.claim_key} nhưng claim này giờ là '{c.status}' (không còn nguồn hợp lệ)")
     if any(c.status == "verified" and not c.source_url for c in claims):
         reasons.append("Có claim verified thiếu source_url")
     if not fc.freshness_ok(story.freshness_checked_at):
@@ -1145,6 +1169,9 @@ def autopilot_tick(session: Session, providers: Providers | None = None) -> dict
     ch = session.scalar(select(Channel).where(Channel.selected.is_(True)))
     if ch is None:
         return {"ran": False, "reason": "Chưa chọn kênh đích"}
+    from ..services.ingest import reapply_fact_mode
+
+    reapply_fact_mode(session)  # tin quét trước khi đổi chế độ xử lý tin cũng được xếp lại
     week = session.scalar(select(func.count(Story.id)).where(Story.mode == "AUTOPILOT_PRIVATE",
                                                              Story.created_at >= now() - timedelta(days=7))) or 0
     if week >= s.max_videos_per_week:
@@ -1169,7 +1196,7 @@ def autopilot_tick(session: Session, providers: Providers | None = None) -> dict
         if n.id in used:
             continue
         claims = list(n.claims)
-        if fc.blocking_claims(claims) or not any(c.status == "verified" and c.is_key for c in claims):
+        if fc.blocking_claims(claims) or not any(fc.is_fact(c.status) and c.is_key for c in claims):
             continue
         st = Story(news_item_id=n.id, pillar=n.pillar or "P1", topic=n.title.replace("[DEMO] ", ""), mode="AUTOPILOT_PRIVATE",
                    autopilot_authorized=True, channel_id=ch.id, is_demo=n.is_demo)

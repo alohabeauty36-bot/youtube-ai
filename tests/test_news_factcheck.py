@@ -51,26 +51,92 @@ def test_sensitive_claim_requires_primary_or_two_sources():
             "s3": fc.SourceRef("s3", "https://hang.vn/z", "Hãng", 1, None, "giá xe là 300 triệu đồng")}
     c = {"claim_key": "c1", "text": "Giá 300 triệu", "claim_type": "price", "source_url": "https://a.vn/x",
          "evidence_excerpt": "giá xe là 300 triệu đồng"}
-    assert fc.verify_claim(c | {"source_ids": ["s1"]}, refs)[0] == "unverified"
-    assert fc.verify_claim(c | {"source_ids": ["s1", "s2"]}, refs)[0] == "verified"
-    assert fc.verify_claim(c | {"source_ids": ["s3"]}, refs)[0] == "verified"
+    assert fc.verify_claim(c | {"source_ids": ["s1"]}, refs, analysis=False)[0] == "unverified"
+    assert fc.verify_claim(c | {"source_ids": ["s1", "s2"]}, refs, analysis=False)[0] == "verified"
+    assert fc.verify_claim(c | {"source_ids": ["s3"]}, refs, analysis=False)[0] == "verified"
+    # chế độ phân tích: một báo đưa → "đã đưa tin", dùng được khi ghi "theo Báo A"
+    st, why = fc.verify_claim(c | {"source_ids": ["s1"]}, refs, analysis=True)
+    assert st == "reported" and "theo Báo A" in why
+    assert fc.verify_claim(c | {"source_ids": ["s1", "s2"]}, refs, analysis=True)[0] == "verified"
 
 
 def test_evidence_must_match_source_text():
     refs = {"s1": fc.SourceRef("s1", "https://a.vn/x", "Hãng", 1, None, "Ưu đãi đến hết 31/12.")}
     c = {"claim_key": "c1", "text": "Miễn phí vĩnh viễn", "claim_type": "charging_offer", "source_url": "https://a.vn/x",
          "source_ids": ["s1"], "evidence_excerpt": "miễn phí sạc vĩnh viễn"}
-    st, reason = fc.verify_claim(c, refs)
-    assert st == "unverified" and "không khớp" in reason
+    for mode in (False, True):  # trích dẫn không có trong bài gốc = có thể bịa → loại ở CẢ HAI chế độ
+        st, reason = fc.verify_claim(c, refs, analysis=mode)
+        assert st == "unverified" and "không khớp" in reason
 
 
 def test_no_source_is_unverified_and_blocks():
     out = fc.check_claims([{"claim_key": "c1", "text": "x", "claim_type": "price", "source_ids": [], "is_key": True}], {})
     assert out[0]["status"] == "unverified"
-    assert fc.blocking_claims(out)
+    assert fc.blocking_claims(out, analysis=False)
+    # chế độ phân tích không chặn vì claim chưa xác minh, nhưng claim không nguồn KHÔNG phải dữ kiện dùng được
+    assert fc.blocking_claims(out, analysis=True) == [] and not fc.is_fact(out[0]["status"])
+
+
+def test_analysis_mode_attribution_rules():
+    assert fc.has_attribution("Theo VnExpress, giá xe giảm 10%.", [])
+    assert fc.has_attribution("Tuổi Trẻ đưa tin hãng sẽ mở thêm trạm.", [])
+    assert fc.has_attribution("Báo Dân trí: hãng sẽ mở thêm trạm.", ["Dân trí"])
+    assert not fc.has_attribution("Giá xe giảm 10% từ tháng sau.", ["VnExpress"])
+    assert "CHẾ ĐỘ PHÂN TÍCH" in fc.ANALYSIS_SCRIPT_NOTE and "không bịa" in fc.ANALYSIS_SCRIPT_NOTE.lower()
+
+
+def test_script_qa_requires_source_for_reported_claims():
+    from ev_studio.services.script_qa import run_script_qa
+
+    pack = [{"claim_key": "c1", "text": "Giá xe giảm 10%", "status": "reported", "source_ids": ["s1"], "is_key": True}]
+
+    def out(excerpt):
+        return {"spoken_script": excerpt + " Hẹn gặp lại.", "closing_teaser": "Hẹn gặp lại.",
+                "editorial_claim_map": [{"claim_id": "c1", "source_ids": ["s1"], "relevant_script_excerpt": excerpt}],
+                "title_options": [{"title": "a"}, {"title": "b"}, {"title": "c"}], "production_notes": {}}
+
+    def check(o, analysis):
+        qa = run_script_qa(o, pack_claims=pack, source_texts=[], recent_scripts=[], analysis=analysis, publishers=["VnExpress"])
+        return {c["name"]: c["ok"] for c in qa.checks}
+
+    good = check(out("Theo VnExpress, giá xe giảm 10%."), True)
+    assert good["Tin chưa xác minh được ghi rõ nguồn (\"theo <báo>\")"] and good["Có ít nhất một claim trọng yếu được dẫn"]
+    bad = check(out("Giá xe giảm 10%."), True)
+    assert not bad["Tin chưa xác minh được ghi rõ nguồn (\"theo <báo>\")"]
+    strict = check(out("Theo VnExpress, giá xe giảm 10%."), False)  # chế độ chặt: tin chưa xác minh không được dùng
+    assert not strict["Claim map chỉ dùng claim đã xác minh"]
 
 
 def test_inference_never_promoted():
     out = fc.check_claims([{"claim_key": "c9", "text": "Có thể đông hơn", "status": "inference", "source_ids": ["s1"],
                             "source_url": "https://a"}], {"s1": fc.SourceRef("s1", "https://a", "A", 1)})
     assert out[0]["status"] == "inference"
+
+
+def test_reapply_fact_mode_promotes_single_source_news(db):
+    """Tin quét trước khi bật chế độ phân tích: claim một báo đưa → 'reported', tin đủ điểm lên shortlist; chế độ chặt hạ lại."""
+    from ev_studio.config import get_settings
+    from ev_studio.models import Claim, NewsItem
+    from ev_studio.services import ingest
+
+    s = get_settings()
+    text = "Hãng công bố giá xe là 300 triệu đồng từ tháng 12."
+    n = NewsItem(title="Giá xe mới", url="https://a.vn/gia", canonical_url="https://a.vn/gia-reapply", publisher="Báo A",
+                 raw_excerpt=text, article_hash="reapply-test", trust_tier=2, pillar="P1", score=s.score_shortlist + 1,
+                 status="research", supporting_sources=[{"source_id": "s1", "url": "https://a.vn/gia", "publisher": "Báo A",
+                                                         "trust_tier": 2, "text": text}])
+    n.claims.append(Claim(claim_key="c1", text="Giá 300 triệu", claim_type="price", source_url="https://a.vn/gia",
+                          source_ids=["s1"], evidence_excerpt="giá xe là 300 triệu đồng", status="unverified", is_key=True,
+                          verification_reason="Claim nhạy cảm cần nguồn cấp 1 hoặc ≥2 nguồn uy tín độc lập"))
+    db.add(n)
+    db.flush()
+    try:
+        assert s.fact_mode == "analysis"  # mặc định
+        assert ingest.reapply_fact_mode(db) >= 1
+        assert n.status == "shortlist" and n.claims[0].status == "reported"
+        s.fact_mode = "strict"
+        ingest.reapply_fact_mode(db)
+        assert n.status == "research" and n.claims[0].status == "unverified"
+    finally:
+        s.fact_mode = "analysis"
+        db.rollback()

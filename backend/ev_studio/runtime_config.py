@@ -148,6 +148,10 @@ FIELDS: list[ConfigField] = [
                 help="Pexels đã tạm dừng cấp key mới (từ cuối 9/2026). Có key cũ thì nhập để thêm nguồn; không có thì bỏ trống."),
     ConfigField("wikimedia_enabled", "Tìm ảnh trên Wikimedia Commons", "media", "bool"),
     ConfigField("wikimedia_user_agent", "User-Agent gửi Wikimedia (kèm email liên hệ)", "media", "text"),
+    ConfigField("fact_mode", "Cách xử lý tin chưa xác minh", "editorial", "select", ("analysis", "strict"),
+                help="analysis (mặc định): video là bài PHÂN TÍCH tin báo chí đã đăng — tin mới có một báo đưa vẫn làm được, "
+                     "kịch bản phải ghi rõ \"theo <tên báo>\"; con số/trích dẫn phải có trong bài gốc. strict: chỉ dùng thông tin "
+                     "đã được nguồn chính thức hoặc ≥2 báo uy tín xác nhận, tin chưa xác minh bị chặn."),
     ConfigField("duration_target_seconds", "Thời lượng mục tiêu (giây)", "editorial", "float",
                 help="Mặc định 660 giây (11 phút) để audio đo thật có biên an toàn trên 10 phút."),
     ConfigField("duration_min_seconds", "Tối thiểu (giây)", "editorial", "float",

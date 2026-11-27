@@ -106,15 +106,18 @@ class AgentWriter:
             unknown = set(pack.get("source_ids", [])) - known
             return (not unknown, [f"nhắc source_id không tồn tại: {sorted(unknown)}"] if unknown else [])
 
-        return self._ask(Task("nghien_cuu", self.bundle.research_system, user, _schema(ResearchPackLLM), check,
+        from ..services.fact_checker import prompt_note
+
+        return self._ask(Task("nghien_cuu", self.bundle.research_system + prompt_note("research"), user, _schema(ResearchPackLLM), check,
                               query=ctx["news"].get("title", ""), story_id=ctx.get("story_id"), max_tokens=6000))
 
     # ---------------------------------------------------------------- Phòng Biên kịch
 
     def write_script(self, ctx: dict):
+        from ..services.fact_checker import prompt_note
         from ..services.script_qa import run_script_qa
 
-        system = self.bundle.system + "\n\n" + self.bundle.pillar_profiles[ctx["pillar"]]
+        system = self.bundle.system + prompt_note("script") + "\n\n" + self.bundle.pillar_profiles[ctx["pillar"]]
         user = render_developer_message(self.bundle, ctx) + "\n\n" + render_user_task(self.bundle, ctx["core_question"])
         pack = ctx.get("research_pack") or {}
         pack_claims = list(pack.get("claims", [])) + list(pack.get("claims_to_avoid", []))
@@ -125,7 +128,8 @@ class AgentWriter:
             target_words = target_s * WORDS_PER_SECOND
 
         def check(out):
-            qa = run_script_qa(out, pack_claims=pack_claims, source_texts=[], recent_scripts=[])
+            pubs = [x.get("publisher") or "" for x in pack.get("sources", [])] + [(pack.get("news") or {}).get("publisher") or ""]
+            qa = run_script_qa(out, pack_claims=pack_claims, source_texts=[], recent_scripts=[], publishers=pubs)
             problems = [f"{c['name']}: {c['detail']}" for c in qa.checks if c["blocking"] and not c["ok"]]
             words = len(out.get("spoken_script", "").split())
             if not 0.8 * target_words <= words <= 1.2 * target_words:
@@ -139,7 +143,9 @@ class AgentWriter:
     # ---------------------------------------------------------------- Phòng Biên tập
 
     def rewrite_paragraph(self, ctx: dict, paragraph: str, instruction: str):
-        system = (self.bundle.system + "\n\nNHIỆM VỤ PHỤ: viết lại MỘT đoạn lời đọc. Trả JSON {\"paragraph\": \"...\"}. "
+        from ..services.fact_checker import prompt_note
+
+        system = (self.bundle.system + prompt_note("script") + "\n\nNHIỆM VỤ PHỤ: viết lại MỘT đoạn lời đọc. Trả JSON {\"paragraph\": \"...\"}. "
                   "Giữ nguyên mọi dữ kiện có claim, không thêm dữ kiện mới ngoài RESEARCH_PACK.")
         user = render_developer_message(self.bundle, ctx) + f"\n\nĐOẠN CẦN SỬA:\n{paragraph}\n\nYÊU CẦU SỬA: {instruction}"
 

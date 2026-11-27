@@ -28,7 +28,7 @@ def chapters_from_scenes(scenes: list[dict], paragraphs_titles: list[tuple[float
 
 
 def build_description(*, main_angle: str, summary_line: str, chapters: list[dict], sources: list[dict],
-                      asset_credits: list[str], has_estimates: bool, pillar: str, is_demo: bool) -> str:
+                      asset_credits: list[str], has_estimates: bool, pillar: str, is_demo: bool, analysis: bool = False) -> str:
     tz = ZoneInfo(get_settings().timezone)
     access = datetime.now(tz).strftime("%d/%m/%Y")
     lines = []
@@ -44,6 +44,9 @@ def build_description(*, main_angle: str, summary_line: str, chapters: list[dict
         pub = _fmt_date(s.get("published_at"))
         lines.append(f"- {s['publisher']} ({pub}): {s['url']} — truy cập {access}")
     lines.append("")
+    if analysis:
+        lines.append("Video phân tích, bình luận dựa trên thông tin các báo đã đăng (ghi ở phần nguồn); một số thông tin "
+                     "chưa được nguồn thứ hai xác nhận và có thể thay đổi.")
     if has_estimates:
         lines.append("Các phép tính trong video là ví dụ minh họa dựa trên giả định được nêu rõ, không phải báo giá.")
     if asset_credits:
